@@ -3,6 +3,8 @@ import { z } from "zod";
 
 const configSchema = z.object({
   BANK_APP_URL: z.url().default("http://localhost:3000"),
+  BANK_OPERATOR_ID: z.string().min(1).optional(),
+  BANK_OPERATOR_PASSWORD: z.string().min(1).optional(),
   LLM_PROVIDER: z.enum(["openai", "anthropic"]).default("openai"),
   LLM_MODEL: z.string().optional(),
   LLM_API_KEY: z.string().optional(),

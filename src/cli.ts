@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { runBrowserCheck } from "./browser-check.js";
-import { loadConfig } from "./config.js";
+import { runBrowserCheck } from "./commands/browser-check.js";
+import { runHealthCheck } from "./commands/health.js";
+import { runLoginCheck } from "./commands/login-check.js";
+import { loadConfig } from "./config/env.js";
 
 const program = new Command();
 
@@ -16,14 +18,7 @@ program
   .description("Validate local configuration without starting a browser")
   .action(() => {
     const config = loadConfig();
-
-    console.log("Automation configuration is valid.");
-    console.table({
-      bankAppUrl: config.BANK_APP_URL,
-      llmProvider: config.LLM_PROVIDER,
-      llmModel: config.LLM_MODEL || "not configured",
-      llmApiKey: config.LLM_API_KEY ? "configured" : "not configured",
-    });
+    runHealthCheck(config);
   });
 
 program
@@ -33,6 +28,15 @@ program
   .action(async (options: { headed?: boolean }) => {
     const config = loadConfig();
     await runBrowserCheck(config, options.headed ?? false);
+  });
+
+program
+  .command("login-check")
+  .description("Log in to the bank app and capture a verification screenshot")
+  .option("--headed", "show the browser window while checking")
+  .action(async (options: { headed?: boolean }) => {
+    const config = loadConfig();
+    await runLoginCheck(config, options.headed ?? false);
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {

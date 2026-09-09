@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
-import type { AppConfig } from "./config.js";
+import type { AppConfig } from "../config/env.js";
 
 export async function runBrowserCheck(config: AppConfig, headed: boolean): Promise<void> {
   console.log(`Opening ${config.BANK_APP_URL}`);
