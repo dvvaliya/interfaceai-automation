@@ -1,6 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
+import { generateMemberBalanceArtifact } from "../artifacts/generator.js";
+import { saveCapabilityArtifact } from "../artifacts/store.js";
 import type { AppConfig } from "../config/env.js";
 import { runAgentLoop, type AgentLoopResult } from "../discovery/agent-loop.js";
 import { parseDiscoveryRequest } from "../discovery/request.js";
@@ -76,11 +78,17 @@ export async function runDiscover(
       maxSteps: config.DISCOVERY_MAX_STEPS,
       timeoutMs: config.DISCOVERY_TIMEOUT_MS,
     });
+    let artifactPath: string | undefined;
+    if (result.status === "completed") {
+      const artifact = generateMemberBalanceArtifact(request, result);
+      artifactPath = await saveCapabilityArtifact(artifact);
+    }
+
     const evidencePath = path.resolve("evidence", "discovery-run.json");
     await writeFile(
       evidencePath,
       `${JSON.stringify(
-        { request, provider: provider.name, result },
+        { request, provider: provider.name, result, artifactPath },
         null,
         2,
       )}\n`,
@@ -93,6 +101,7 @@ export async function runDiscover(
       console.log(`Summary: ${result.summary}`);
       console.log("Outputs:");
       console.log(JSON.stringify(result.outputs, null, 2));
+      console.log(`Artifact: ${artifactPath}`);
     } else {
       console.log(`Reason: ${result.reason}`);
     }

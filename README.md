@@ -18,6 +18,7 @@ The current implementation contains:
 - an action executor that routes browser actions to the surface and returns typed terminal outcomes,
 - a policy guard with configurable origin, route, and action allowlists plus approval-required decisions,
 - a provider-neutral LLM contract and scripted fake provider for offline testing.
+- a typed, versioned capability artifact schema with parameterized inputs, outputs, checkpoints, locator fallbacks, and known outcomes.
 
 LLM calls, discovery, artifacts, and replay are not implemented yet.
 
@@ -49,7 +50,7 @@ npm test
 npm run typecheck
 ```
 
-`discover` is the main user entry point. It validates the goal and target, opens and authenticates the app, then runs a bounded LiteLLM observe-decide-act loop until the model completes, escalates, or hits a safety stop. The structured run is written to `evidence/discovery-run.json`, with a screenshot for each browser state.
+`discover` is the main user entry point. It accepts a natural-language goal plus target, runs the bounded LiteLLM agent loop, infers the member parameter from the successful interaction, and validates and writes `../artifacts/get_member_savings_balance.json`. Typed inputs are supplied later when replaying the artifact.
 
 `browser-check` opens `BANK_APP_URL`, verifies its HTTP response, prints the page title and final URL, and writes `evidence/browser-check.png`. Use `--headed` when you want to watch the browser.
 
