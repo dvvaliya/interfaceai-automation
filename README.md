@@ -13,7 +13,10 @@ The current implementation contains:
 - a Playwright `browser-check` command,
 - a Playwright `login-check` command,
 - an accessibility-based `observe-check` command,
-- a generic surface `action-check` command.
+- a generic surface `action-check` command,
+- a strict Zod schema for controlled `fill`, `click`, `complete`, and `escalate` actions,
+- an action executor that routes browser actions to the surface and returns typed terminal outcomes,
+- a policy guard with configurable origin, route, and action allowlists plus approval-required decisions.
 
 LLM calls, discovery, artifacts, and replay are not implemented yet.
 
@@ -40,6 +43,7 @@ npm run dev -- observe-check
 npm run dev -- observe-check --headed
 npm run dev -- action-check
 npm run dev -- action-check --member-id 24680 --headed
+npm test
 npm run typecheck
 ```
 

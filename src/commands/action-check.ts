@@ -2,7 +2,14 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { z } from "zod";
+import { executeAction } from "../actions/executor.js";
+import { parseAgentAction } from "../actions/schema.js";
 import type { AppConfig } from "../config/env.js";
+import {
+  assertPolicyAllows,
+  createActionPolicy,
+  evaluateActionPolicy,
+} from "../policy/action-policy.js";
 import { PlaywrightSurface } from "../surface/playwright-surface.js";
 import { authenticateBankDemo } from "../targets/bank-demo/authenticate.js";
 
@@ -45,13 +52,30 @@ export async function runActionCheck(
     });
 
     const surface = new PlaywrightSurface(page);
+    const policy = createActionPolicy(config);
     const before = await surface.observe("action-check-before");
 
-    await surface.fill(
-      { strategy: "role", role: "textbox", name: "Member Number" },
-      memberId,
-    );
-    await surface.click({ strategy: "role", role: "button", name: "Search" });
+    const actions = [
+      parseAgentAction({
+        type: "fill",
+        target: { strategy: "role", role: "textbox", name: "Member Number" },
+        value: memberId,
+        reason: "Enter the member requested by the action check.",
+      }),
+      parseAgentAction({
+        type: "click",
+        target: { strategy: "role", role: "button", name: "Search" },
+        reason: "Submit the member search.",
+      }),
+    ];
+
+    const policyDecisions = [];
+    for (const action of actions) {
+      const decision = evaluateActionPolicy(policy, action, { currentUrl: page.url() });
+      policyDecisions.push(decision);
+      assertPolicyAllows(decision);
+      await executeAction(surface, action);
+    }
 
     await page.getByRole("heading", { name: "Member Profile", exact: true }).waitFor({
       state: "visible",
@@ -62,7 +86,7 @@ export async function runActionCheck(
     const evidencePath = path.resolve("evidence", "action-check.json");
     await writeFile(
       evidencePath,
-      `${JSON.stringify({ memberId, before, after }, null, 2)}\n`,
+      `${JSON.stringify({ memberId, actions, policyDecisions, before, after }, null, 2)}\n`,
       "utf8",
     );
 

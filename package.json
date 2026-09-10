@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "health": "tsx src/cli.ts health",
+    "test": "tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },
