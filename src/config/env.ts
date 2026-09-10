@@ -27,9 +27,10 @@ const configSchema = z.object({
   ALLOWED_ORIGINS: allowedOriginsSchema.default(["http://localhost:3000"]),
   ALLOWED_PATH_PREFIXES: allowedPathPrefixesSchema.default(["/login", "/members"]),
   ALLOWED_ACTIONS: allowedActionsSchema.default(["fill", "click", "complete", "escalate"]),
-  LLM_PROVIDER: z.enum(["openai", "anthropic"]).default("openai"),
-  LLM_MODEL: z.string().optional(),
-  LLM_API_KEY: z.string().optional(),
+  LLM_PROVIDER: z.literal("litellm").default("litellm"),
+  LITELLM_BASE_URL: z.url().optional(),
+  LITELLM_API_KEY: z.string().min(1).optional(),
+  LITELLM_MODEL: z.string().min(1).optional(),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

@@ -1,11 +1,14 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
+import { parseAgentAction } from "../actions/schema.js";
 import type { AppConfig } from "../config/env.js";
 import { parseDiscoveryRequest, type DiscoveryRequest } from "../discovery/request.js";
+import { createLlmProvider } from "../llm/factory.js";
 import {
   assertPolicyAllows,
   createActionPolicy,
+  evaluateActionPolicy,
   evaluateLocationPolicy,
   evaluateOriginPolicy,
 } from "../policy/action-policy.js";
@@ -66,18 +69,36 @@ export async function runDiscover(
 
     const surface = new PlaywrightSurface(page);
     const initialObservation = await surface.observe("discovery-initial");
+    const provider = createLlmProvider(config);
+    const rawAction = await provider.decideNextAction({
+      goal: request.goal,
+      observation: initialObservation,
+      stepNumber: 1,
+      actionHistory: [],
+    });
+    const suggestedAction = parseAgentAction(rawAction);
+    const policyDecision = evaluateActionPolicy(policy, suggestedAction, {
+      currentUrl: page.url(),
+    });
     const evidencePath = path.resolve("evidence", "discovery-request.json");
     await writeFile(
       evidencePath,
-      `${JSON.stringify({ request, initialObservation }, null, 2)}\n`,
+      `${JSON.stringify(
+        { request, provider: provider.name, initialObservation, suggestedAction, policyDecision },
+        null,
+        2,
+      )}\n`,
       "utf8",
     );
 
     console.log("Initial authenticated observation captured.");
     console.log(`Current URL: ${initialObservation.url}`);
+    console.log("Validated model suggestion:");
+    console.log(JSON.stringify(suggestedAction, null, 2));
+    console.log(`Policy decision: ${policyDecision.effect} - ${policyDecision.reason}`);
     console.log(`Evidence JSON: ${evidencePath}`);
     console.log(`Screenshot: ${initialObservation.screenshotPath}`);
-    console.log("LLM execution is not connected yet.");
+    console.log("The suggested action was not executed in this step.");
   } finally {
     await browser.close();
   }

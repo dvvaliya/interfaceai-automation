@@ -8,7 +8,8 @@ export function runHealthCheck(config: AppConfig): void {
     allowedPaths: config.ALLOWED_PATH_PREFIXES.join(", "),
     allowedActions: config.ALLOWED_ACTIONS.join(", "),
     llmProvider: config.LLM_PROVIDER,
-    llmModel: config.LLM_MODEL || "not configured",
-    llmApiKey: config.LLM_API_KEY ? "configured" : "not configured",
+    llmBaseUrl: config.LITELLM_BASE_URL || "not configured",
+    llmModel: config.LITELLM_MODEL || "not configured",
+    llmApiKey: config.LITELLM_API_KEY ? "configured" : "not configured",
   });
 }
