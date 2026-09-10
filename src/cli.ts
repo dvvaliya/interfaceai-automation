@@ -7,9 +7,14 @@ import { runDiscover } from "./commands/discover.js";
 import { runHealthCheck } from "./commands/health.js";
 import { runLoginCheck } from "./commands/login-check.js";
 import { runObserveCheck } from "./commands/observe-check.js";
+import { runReplay } from "./commands/replay.js";
 import { loadConfig } from "./config/env.js";
 
 const program = new Command();
+
+function collectInput(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
 
 program
   .name("interfaceai-automation")
@@ -70,6 +75,17 @@ program
   .action(async (options: { memberId: string; headed?: boolean }) => {
     const config = loadConfig();
     await runActionCheck(config, options.memberId, options.headed ?? false);
+  });
+
+program
+  .command("replay")
+  .description("Replay a capability artifact without an LLM")
+  .requiredOption("-a, --artifact <path>", "path to a capability artifact")
+  .option("-i, --input <key=value>", "typed replay input (repeatable)", collectInput, [])
+  .option("--headed", "show the browser during replay when execution is connected")
+  .action(async (options: { artifact: string; input: string[]; headed?: boolean }) => {
+    const config = loadConfig();
+    await runReplay(config, options.artifact, options.input, options.headed ?? false);
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {

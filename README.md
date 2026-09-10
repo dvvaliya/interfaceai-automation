@@ -38,6 +38,7 @@ The API key is optional for the health command. Never commit `.env`.
 npm run dev -- --help
 npm run health
 npm run discover -- --goal "Find member 12345 and return the savings balance" --headed
+npm run replay -- --artifact ../artifacts/get_member_savings_balance.json --input memberId=24680
 npm run dev -- browser-check
 npm run dev -- browser-check --headed
 npm run dev -- login-check
@@ -51,6 +52,8 @@ npm run typecheck
 ```
 
 `discover` is the main user entry point. It accepts a natural-language goal plus target, runs the bounded LiteLLM agent loop, infers the member parameter from the successful interaction, and validates and writes `../artifacts/get_member_savings_balance.json`. Typed inputs are supplied later when replaying the artifact.
+
+`replay` loads and validates an artifact and typed inputs, opens and authenticates the target, executes saved steps with locator fallbacks, detects known outcomes, verifies the checkpoint, extracts outputs, and writes `evidence/replay-run.json`. It never calls LiteLLM.
 
 `browser-check` opens `BANK_APP_URL`, verifies its HTTP response, prints the page title and final URL, and writes `evidence/browser-check.png`. Use `--headed` when you want to watch the browser.
 

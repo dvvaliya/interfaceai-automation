@@ -71,6 +71,7 @@ export function generateMemberBalanceArtifact(
     surface: {
       type: "web",
       appId: "meridian_core",
+      entryUrl: request.target,
       allowedOrigins: [new URL(request.target).origin],
     },
     inputs: {

@@ -206,6 +206,7 @@ export const capabilityArtifactSchema = z
       .object({
         type: z.literal("web"),
         appId: identifierSchema,
+        entryUrl: z.url(),
         allowedOrigins: z.array(z.url()).min(1),
       })
       .strict(),

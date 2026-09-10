@@ -8,14 +8,42 @@ export type SurfaceObservation = {
 
 export type RoleTarget = {
   strategy: "role";
-  role: "button" | "link" | "textbox";
+  role:
+    | "button"
+    | "cell"
+    | "combobox"
+    | "heading"
+    | "link"
+    | "region"
+    | "row"
+    | "textbox";
   name: string;
+  exact?: boolean;
 };
 
-export type SurfaceTarget = RoleTarget;
+export type LabelTarget = {
+  strategy: "label";
+  label: string;
+  exact?: boolean;
+};
+
+export type TextTarget = {
+  strategy: "text";
+  text: string;
+  exact?: boolean;
+};
+
+export type SurfaceTarget = RoleTarget | LabelTarget | TextTarget;
 
 export interface ComputerSurface {
   observe(evidenceName: string): Promise<SurfaceObservation>;
   fill(target: SurfaceTarget, value: string): Promise<void>;
   click(target: SurfaceTarget): Promise<void>;
+  isVisible(target: SurfaceTarget, timeoutMs?: number): Promise<boolean>;
+  extractText(target: SurfaceTarget): Promise<string>;
+  extractTableCell(
+    tableTarget: SurfaceTarget,
+    rowMatch: { column: string; value: string },
+    outputColumn: string,
+  ): Promise<string>;
 }

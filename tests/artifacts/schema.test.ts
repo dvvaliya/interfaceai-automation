@@ -19,6 +19,7 @@ function validBalanceArtifact(): unknown {
     surface: {
       type: "web",
       appId: "meridian_core",
+      entryUrl: "https://interfaceai-bank-demo.vercel.app",
       allowedOrigins: ["https://interfaceai-bank-demo.vercel.app"],
     },
     inputs: {

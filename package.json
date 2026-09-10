@@ -7,6 +7,7 @@
     "dev": "tsx src/cli.ts",
     "discover": "tsx src/cli.ts discover",
     "health": "tsx src/cli.ts health",
+    "replay": "tsx src/cli.ts replay",
     "test": "tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
