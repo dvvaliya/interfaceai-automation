@@ -188,7 +188,7 @@ export const checkpointSchema = z.discriminatedUnion("kind", [
 export const knownOutcomeSchema = z
   .object({
     code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-    classification: z.enum(["business", "recoverable", "failure"]),
+    classification: z.enum(["business", "recoverable", "intervention", "failure"]),
     description: nonEmptyTextSchema.max(500),
     whenTextVisible: nonEmptyTextSchema.max(500),
   })

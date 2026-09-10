@@ -55,6 +55,28 @@ describe("agent action schema", () => {
     assert.equal(action.type, "escalate");
   });
 
+  it("accepts business-outcome and failure actions", () => {
+    assert.equal(
+      parseAgentAction({
+        type: "business_outcome",
+        code: "INVALID_INPUT",
+        message: "Member ID must contain five digits.",
+        reason: "The supplied ID has four digits.",
+      }).type,
+      "business_outcome",
+    );
+    assert.equal(
+      parseAgentAction({
+        type: "fail",
+        category: "hard",
+        code: "APPLICATION_ERROR",
+        message: "The core service is unavailable.",
+        reason: "The application displayed an internal error.",
+      }).type,
+      "fail",
+    );
+  });
+
   it("rejects an unsupported action type", () => {
     assert.throws(() =>
       parseAgentAction({

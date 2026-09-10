@@ -17,7 +17,11 @@ export type ActionPolicy = {
 };
 
 const sensitiveTargetName = /(password|passcode|pin|token|secret|social security|ssn)/i;
-const riskyClickNames = new Set(["create sub-account", "yes, create account"]);
+const riskyClickReasons = new Map([
+  ["create sub-account", "Creating a financial account requires human approval."],
+  ["yes, create account", "Confirming financial account creation requires human approval."],
+  ["continue and record access", "Accessing a restricted member record requires human approval."],
+]);
 
 export function createActionPolicy(config: AppConfig): ActionPolicy {
   return {
@@ -36,8 +40,8 @@ export function evaluateActionPolicy(
     return { effect: "block", reason: `Action type '${action.type}' is not allowlisted.` };
   }
 
-  if (action.type === "escalate") {
-    return { effect: "allow", reason: "Escalation is an allowed safe terminal action." };
+  if (action.type === "escalate" || action.type === "business_outcome" || action.type === "fail") {
+    return { effect: "allow", reason: `'${action.type}' is an allowed terminal action.` };
   }
 
   const locationDecision = evaluateLocationPolicy(policy, context.currentUrl);
@@ -52,10 +56,12 @@ export function evaluateActionPolicy(
     };
   }
 
-  if (action.type === "click" && riskyClickNames.has(action.target.name.toLowerCase())) {
+  const riskyReason =
+    action.type === "click" ? riskyClickReasons.get(action.target.name.toLowerCase()) : undefined;
+  if (riskyReason) {
     return {
       effect: "require_approval",
-      reason: `Clicking '${action.target.name}' may create a financial account.`,
+      reason: riskyReason,
     };
   }
 
@@ -68,6 +74,13 @@ export function evaluateOriginPolicy(policy: ActionPolicy, rawUrl: string): Poli
     url = new URL(rawUrl);
   } catch {
     return { effect: "block", reason: "The target URL is invalid." };
+  }
+
+  if (url.protocol === "chrome-error:") {
+    return {
+      effect: "block",
+      reason: "Browser navigation failed and opened an internal error page, likely due to a transient network timeout.",
+    };
   }
 
   if (!policy.allowedOrigins.includes(url.origin)) {

@@ -31,8 +31,13 @@ Allowed actions:
 {"type":"complete","summary":"result summary","outputs":{"name":"value"},"reason":"why the goal is complete"}
 4. Escalate:
 {"type":"escalate","reason":"why a human is required"}
+5. Return an expected business outcome:
+{"type":"business_outcome","code":"UPPER_SNAKE_CASE_CODE","message":"caller-facing result","reason":"why this is a valid business result"}
+6. Report a technical failure:
+{"type":"fail","category":"recoverable|hard","code":"UPPER_SNAKE_CASE_CODE","message":"debuggable failure","reason":"why execution cannot continue"}
 
-Choose only a control present in the accessibility snapshot. Never request or enter credentials.`;
+Choose only a control present in the accessibility snapshot. Never request or enter credentials.
+Never alter, pad, correct, or guess identifiers from the goal. If an identifier violates visible validation rules, return business_outcome with code INVALID_INPUT. Use business_outcome for record-not-found and other legitimate negative answers. Use fail for application errors, permission denials, session expiry, and technical problems. Use escalate only when a human judgment or approval can resolve the current state.`;
 
 export class LiteLlmProvider implements LlmProvider {
   readonly name: string;

@@ -82,6 +82,10 @@ describe("member balance artifact generator", () => {
     });
     assert.equal(artifact.steps.length, 2);
     assert.equal(artifact.outputs.savingsBalance?.source.kind, "table_cell");
+    assert.equal(
+      artifact.knownOutcomes.some((outcome) => outcome.classification === "intervention"),
+      true,
+    );
     assert.equal(JSON.stringify(artifact).includes("12345"), false);
   });
 

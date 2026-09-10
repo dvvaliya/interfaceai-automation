@@ -139,4 +139,28 @@ describe("deterministic replay executor", () => {
     assert.equal(result.status, "business_outcome");
     assert.equal(result.status === "business_outcome" ? result.code : "", "MEMBER_NOT_FOUND");
   });
+
+  it("pauses with continuation data for an intervention outcome", async () => {
+    const interventionArtifact = {
+      ...artifact,
+      knownOutcomes: [
+        {
+          code: "RESTRICTED_RECORD_REVIEW",
+          classification: "intervention",
+          description: "Human approval is required.",
+          whenTextVisible: "Restricted Record Warning",
+        },
+      ],
+    } as CapabilityArtifact;
+    const surface = new FakeReplaySurface("Restricted Record Warning");
+    const steps = resolveReplaySteps(interventionArtifact, {});
+
+    const result = await executeReplay({ artifact: interventionArtifact, steps, surface, policy });
+
+    assert.equal(result.status, "intervention_required");
+    if (result.status === "intervention_required") {
+      assert.equal(result.blockerText, "Restricted Record Warning");
+      assert.equal(result.resumeAtStepIndex, 1);
+    }
+  });
 });

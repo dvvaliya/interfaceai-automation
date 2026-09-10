@@ -48,11 +48,32 @@ export const escalateActionSchema = z
   })
   .strict();
 
+export const businessOutcomeActionSchema = z
+  .object({
+    type: z.literal("business_outcome"),
+    code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+    message: z.string().trim().min(1).max(1_000),
+    reason: reasonSchema,
+  })
+  .strict();
+
+export const failActionSchema = z
+  .object({
+    type: z.literal("fail"),
+    category: z.enum(["recoverable", "hard"]),
+    code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+    message: z.string().trim().min(1).max(1_000),
+    reason: reasonSchema,
+  })
+  .strict();
+
 export const agentActionSchema = z.discriminatedUnion("type", [
   fillActionSchema,
   clickActionSchema,
   completeActionSchema,
   escalateActionSchema,
+  businessOutcomeActionSchema,
+  failActionSchema,
 ]);
 
 export type AgentAction = z.infer<typeof agentActionSchema>;

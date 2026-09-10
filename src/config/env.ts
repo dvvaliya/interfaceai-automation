@@ -17,7 +17,9 @@ const allowedPathPrefixesSchema = commaSeparatedValues.pipe(
 );
 
 const allowedActionsSchema = commaSeparatedValues.pipe(
-  z.array(z.enum(["fill", "click", "complete", "escalate"])).min(1),
+  z
+    .array(z.enum(["fill", "click", "complete", "escalate", "business_outcome", "fail"]))
+    .min(1),
 );
 
 const configSchema = z.object({
@@ -26,13 +28,22 @@ const configSchema = z.object({
   BANK_OPERATOR_PASSWORD: z.string().min(1).optional(),
   ALLOWED_ORIGINS: allowedOriginsSchema.default(["http://localhost:3000"]),
   ALLOWED_PATH_PREFIXES: allowedPathPrefixesSchema.default(["/login", "/members"]),
-  ALLOWED_ACTIONS: allowedActionsSchema.default(["fill", "click", "complete", "escalate"]),
+  ALLOWED_ACTIONS: allowedActionsSchema.default([
+    "fill",
+    "click",
+    "complete",
+    "escalate",
+    "business_outcome",
+    "fail",
+  ]),
   LLM_PROVIDER: z.literal("litellm").default("litellm"),
   LITELLM_BASE_URL: z.url().optional(),
   LITELLM_API_KEY: z.string().min(1).optional(),
   LITELLM_MODEL: z.string().min(1).optional(),
   DISCOVERY_MAX_STEPS: z.coerce.number().int().min(1).max(50).default(10),
   DISCOVERY_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(120_000),
+  HANDOFF_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(1_800_000).default(300_000),
+  HANDOFF_MAX_RESUME_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

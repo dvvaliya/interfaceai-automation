@@ -123,6 +123,12 @@ export function generateMemberBalanceArtifact(
         whenTextVisible: "Access Denied",
       },
       {
+        code: "RESTRICTED_RECORD_REVIEW",
+        classification: "intervention",
+        description: "A human must approve access to the restricted member record.",
+        whenTextVisible: "Restricted Record Warning",
+      },
+      {
         code: "SESSION_EXPIRED",
         classification: "recoverable",
         description: "The authenticated session expired during replay.",

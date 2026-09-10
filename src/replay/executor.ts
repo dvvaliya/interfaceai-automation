@@ -19,7 +19,16 @@ export type ReplayStepRecord = {
 export type ReplayResult =
   | { status: "success"; outputs: Record<string, string | number | boolean>; steps: ReplayStepRecord[] }
   | { status: "business_outcome"; code: string; message: string; stepId: string; steps: ReplayStepRecord[] }
-  | { status: "intervention_required"; reason: string; stepId: string; steps: ReplayStepRecord[] }
+  | {
+      status: "intervention_required";
+      reason: string;
+      stepId: string;
+      blockerText?: string;
+      cancelledText?: string;
+      resumeAtStepIndex: number;
+      evidence: SurfaceObservation;
+      steps: ReplayStepRecord[];
+    }
   | {
       status: "failure";
       category: "recoverable" | "hard";
@@ -35,19 +44,22 @@ export async function executeReplay(options: {
   steps: ResolvedReplayStep[];
   surface: ComputerSurface;
   policy: ActionPolicy;
+  startStepIndex?: number;
+  previousSteps?: ReplayStepRecord[];
 }): Promise<ReplayResult> {
-  const records: ReplayStepRecord[] = [];
+  const records: ReplayStepRecord[] = [...(options.previousSteps ?? [])];
+  const startStepIndex = options.startStepIndex ?? 0;
   let currentStepId: string | undefined;
+  let currentStepIndex = startStepIndex;
 
   try {
-    for (let index = 0; index < options.steps.length; index += 1) {
+    for (let index = startStepIndex; index < options.steps.length; index += 1) {
       const step = options.steps[index]!;
       currentStepId = step.id;
+      currentStepIndex = index;
 
-      const locationDecision = evaluateLocationPolicy(
-        options.policy,
-        (await options.surface.observe(`replay-step-${index}-before`)).url,
-      );
+      const beforeEvidence = await options.surface.observe(`replay-step-${index}-before`);
+      const locationDecision = evaluateLocationPolicy(options.policy, beforeEvidence.url);
       if (locationDecision.effect !== "allow") {
         return failure("hard", "POLICY_BLOCKED", locationDecision.reason, records, step.id);
       }
@@ -67,6 +79,8 @@ export async function executeReplay(options: {
           status: "intervention_required",
           reason: `Step '${step.id}' is marked risky and requires human approval.`,
           stepId: step.id,
+          resumeAtStepIndex: index + 1,
+          evidence: beforeEvidence,
           steps: records,
         };
       }
@@ -81,7 +95,14 @@ export async function executeReplay(options: {
         evidence,
       });
 
-      const knownOutcome = await detectKnownOutcome(options.artifact, options.surface, step.id, records);
+      const knownOutcome = await detectKnownOutcome(
+        options.artifact,
+        options.surface,
+        step.id,
+        index + 1,
+        evidence,
+        records,
+      );
       if (knownOutcome) {
         return knownOutcome;
       }
@@ -95,11 +116,10 @@ export async function executeReplay(options: {
     );
     if (!checkpointPassed) {
       return {
-        status: "failure",
-        category: "hard",
-        code: "CHECKPOINT_FAILED",
-        message: "Replay steps finished, but the declared success checkpoint was not satisfied.",
-        stepId: currentStepId,
+        status: "intervention_required",
+        reason: "Replay steps finished, but the success checkpoint was not satisfied.",
+        stepId: currentStepId ?? "checkpoint",
+        resumeAtStepIndex: options.steps.length,
         evidence: finalObservation,
         steps: records,
       };
@@ -115,15 +135,24 @@ export async function executeReplay(options: {
       // Preserve the original failure if evidence capture also fails.
     }
 
-    return {
-      status: "failure",
-      category: "hard",
-      code: "STEP_EXECUTION_FAILED",
-      message: error instanceof Error ? error.message : "Unknown replay error.",
-      stepId: currentStepId,
-      evidence,
-      steps: records,
-    };
+    if (evidence && currentStepId) {
+      return {
+        status: "intervention_required",
+        reason: error instanceof Error ? error.message : "Unknown replay error.",
+        stepId: currentStepId,
+        resumeAtStepIndex: currentStepIndex,
+        evidence,
+        steps: records,
+      };
+    }
+
+    return failure(
+      "hard",
+      "STEP_EXECUTION_FAILED",
+      error instanceof Error ? error.message : "Unknown replay error.",
+      records,
+      currentStepId,
+    );
   }
 }
 
@@ -155,6 +184,8 @@ async function detectKnownOutcome(
   artifact: CapabilityArtifact,
   surface: ComputerSurface,
   stepId: string,
+  resumeAtStepIndex: number,
+  evidence: SurfaceObservation,
   steps: ReplayStepRecord[],
 ): Promise<ReplayResult | undefined> {
   for (const outcome of artifact.knownOutcomes) {
@@ -170,6 +201,22 @@ async function detectKnownOutcome(
         code: outcome.code,
         message: outcome.description,
         stepId,
+        steps,
+      };
+    }
+
+    if (outcome.classification === "intervention") {
+      return {
+        status: "intervention_required",
+        reason: outcome.description,
+        stepId,
+        blockerText: outcome.whenTextVisible,
+        cancelledText:
+          outcome.code === "RESTRICTED_RECORD_REVIEW"
+            ? "Record access was cancelled. No member information was displayed."
+            : undefined,
+        resumeAtStepIndex,
+        evidence,
         steps,
       };
     }

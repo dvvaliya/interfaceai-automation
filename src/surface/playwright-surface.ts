@@ -37,7 +37,7 @@ export class PlaywrightSurface implements ComputerSurface {
   }
 
   async click(target: SurfaceTarget): Promise<void> {
-    await this.resolveTarget(target).click({ timeout: 5_000 });
+    await this.resolveTarget(target).click({ timeout: 30_000 });
   }
 
   async isVisible(target: SurfaceTarget, timeoutMs = 500): Promise<boolean> {

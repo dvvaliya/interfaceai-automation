@@ -3,6 +3,10 @@ import path from "node:path";
 import { chromium } from "playwright";
 import { loadCapabilityArtifact } from "../artifacts/loader.js";
 import type { AppConfig } from "../config/env.js";
+import { HandoffController } from "../handoff/controller.js";
+import { installHumanActionCapture } from "../handoff/instrumentation.js";
+import { runOperatorHandoff } from "../handoff/operator-cli.js";
+import { saveIntervention } from "../handoff/store.js";
 import {
   assertPolicyAllows,
   createActionPolicy,
@@ -19,7 +23,7 @@ export async function runReplay(
   config: AppConfig,
   artifactPath: string,
   inputAssignments: readonly string[],
-  headed: boolean,
+  headless: boolean,
 ): Promise<ReplayResult> {
   const artifact = await loadCapabilityArtifact(artifactPath);
   const inputs = resolveReplayInputs(artifact.inputs, inputAssignments);
@@ -36,9 +40,13 @@ export async function runReplay(
   const policy = createActionPolicy(config);
   assertPolicyAllows(evaluateOriginPolicy(policy, artifact.surface.entryUrl));
 
-  const browser = await chromium.launch({ headless: !headed });
+  const handoffEnabled = !headless;
+  const browser = await chromium.launch({ headless });
   try {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    let activeController: HandoffController | undefined;
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await installHumanActionCapture(context, () => activeController);
+    const page = await context.newPage();
     const response = await page.goto(artifact.surface.entryUrl, {
       waitUntil: "domcontentloaded",
       timeout: 15_000,
@@ -55,7 +63,78 @@ export async function runReplay(
     assertPolicyAllows(evaluateLocationPolicy(policy, page.url()));
 
     const surface = new PlaywrightSurface(page);
-    const result = await executeReplay({ artifact, steps, surface, policy });
+    let result = await executeReplay({ artifact, steps, surface, policy });
+    let interventionCount = 0;
+
+    while (result.status === "intervention_required" && handoffEnabled) {
+      interventionCount += 1;
+      if (interventionCount > 3) {
+        result = {
+          status: "failure",
+          category: "hard",
+          code: "HANDOFF_LIMIT_EXCEEDED",
+          message: "Replay exceeded the maximum number of human interventions.",
+          stepId: result.stepId,
+          evidence: result.evidence,
+          steps: result.steps,
+        };
+        break;
+      }
+
+      const handoffObservation = await surface.observe(`handoff-before-${interventionCount}`);
+      const controller = new HandoffController({
+        capabilityId: artifact.id,
+        stepId: result.stepId,
+        reason: result.reason,
+        blockerText: result.blockerText,
+        observation: handoffObservation,
+      });
+      activeController = controller;
+      const operatorDecision = await runOperatorHandoff({
+        controller,
+        surface,
+        policy,
+        blockerText: result.blockerText,
+        cancelledText: result.cancelledText,
+        timeoutMs: config.HANDOFF_TIMEOUT_MS,
+        maxResumeAttempts: config.HANDOFF_MAX_RESUME_ATTEMPTS,
+      });
+
+      if (operatorDecision === "abort" || operatorDecision === "timeout") {
+        result = {
+          status: "failure",
+          category: "hard",
+          code: operatorDecision === "timeout" ? "HANDOFF_TIMEOUT" : "HUMAN_ABORTED",
+          message:
+            operatorDecision === "timeout"
+              ? "Human intervention timed out."
+              : "The human operator aborted the replay.",
+          stepId: result.stepId,
+          evidence: result.evidence,
+          steps: result.steps,
+        };
+        activeController = undefined;
+        break;
+      }
+
+      result = await executeReplay({
+        artifact,
+        steps,
+        surface,
+        policy,
+        startStepIndex: result.resumeAtStepIndex,
+        previousSteps: result.steps,
+      });
+
+      if (result.status === "success" || result.status === "business_outcome") {
+        controller.complete();
+      } else if (result.status === "failure") {
+        controller.abort();
+      }
+      await saveIntervention(controller.snapshot());
+      activeController = undefined;
+    }
+
     const evidencePath = path.resolve("evidence", "replay-run.json");
     const redactedInputs = Object.fromEntries(
       Object.entries(inputs).map(([name, value]) => [
@@ -78,7 +157,10 @@ export async function runReplay(
       "utf8",
     );
 
-    console.log(`Replay status: ${result.status}`);
+    console.log(`\nSteps executed: ${result.steps.length}`);
+    console.log(`Evidence: ${evidencePath}`);
+    console.log("\n=== FINAL RESULT ===");
+    console.log(`Status: ${result.status}`);
     if (result.status === "success") {
       console.log("Outputs:");
       console.log(JSON.stringify(result.outputs, null, 2));
@@ -86,14 +168,14 @@ export async function runReplay(
       console.log(`${result.code}: ${result.message}`);
     } else if (result.status === "intervention_required") {
       console.log(`Reason: ${result.reason}`);
+      if (!handoffEnabled) {
+        console.log("Headless mode cannot transfer local browser control to a human.");
+      }
     } else {
       console.log(`Reason: ${result.message}`);
     }
-    console.log(`Evidence JSON: ${evidencePath}`);
 
-    if (result.status === "failure") {
-      process.exitCode = 1;
-    }
+    if (result.status === "failure") process.exitCode = 1;
     return result;
   } finally {
     await browser.close();

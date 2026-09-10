@@ -64,6 +64,15 @@ describe("action policy", () => {
     assert.throws(() => assertPolicyAllows(decision), { name: "PolicyBlockedError" });
   });
 
+  it("reports the browser error page as a navigation failure", () => {
+    const decision = evaluateOriginPolicy(policy, "chrome-error://chromewebdata/");
+
+    assert.deepEqual(decision, {
+      effect: "block",
+      reason: "Browser navigation failed and opened an internal error page, likely due to a transient network timeout.",
+    });
+  });
+
   it("blocks a path outside the allowlist", () => {
     const action = parseAgentAction({
       type: "click",
@@ -106,6 +115,23 @@ describe("action policy", () => {
 
     assert.equal(decision.effect, "require_approval");
     assert.throws(() => assertPolicyAllows(decision), { name: "ApprovalRequiredError" });
+  });
+
+  it("uses a restricted-record reason for protected record access", () => {
+    const action = parseAgentAction({
+      type: "click",
+      target: { strategy: "role", role: "link", name: "Continue and record access" },
+      reason: "Continue to the restricted record.",
+    });
+
+    const decision = evaluateActionPolicy(policy, action, {
+      currentUrl: "http://localhost:3000/members/result?memberId=33333",
+    });
+
+    assert.deepEqual(decision, {
+      effect: "require_approval",
+      reason: "Accessing a restricted member record requires human approval.",
+    });
   });
 
   it("allows escalation even when the surface URL is untrusted", () => {

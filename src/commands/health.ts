@@ -13,5 +13,7 @@ export function runHealthCheck(config: AppConfig): void {
     llmApiKey: config.LITELLM_API_KEY ? "configured" : "not configured",
     discoveryMaxSteps: config.DISCOVERY_MAX_STEPS,
     discoveryTimeoutMs: config.DISCOVERY_TIMEOUT_MS,
+    handoffTimeoutMs: config.HANDOFF_TIMEOUT_MS,
+    handoffMaxAttempts: config.HANDOFF_MAX_RESUME_ATTEMPTS,
   });
 }

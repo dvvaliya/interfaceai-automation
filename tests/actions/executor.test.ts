@@ -100,4 +100,44 @@ describe("action executor", () => {
     assert.equal(surface.fillCalls.length, 0);
     assert.equal(surface.clickCalls.length, 0);
   });
+
+  it("returns a business outcome without touching the surface", async () => {
+    const surface = new FakeSurface();
+    const action = parseAgentAction({
+      type: "business_outcome",
+      code: "INVALID_INPUT",
+      message: "Member ID must contain five digits.",
+      reason: "The supplied ID has four digits.",
+    });
+
+    const outcome = await executeAction(surface, action);
+
+    assert.deepEqual(outcome, {
+      status: "business_outcome",
+      code: "INVALID_INPUT",
+      message: "Member ID must contain five digits.",
+    });
+    assert.equal(surface.fillCalls.length, 0);
+    assert.equal(surface.clickCalls.length, 0);
+  });
+
+  it("returns a typed failure without touching the surface", async () => {
+    const surface = new FakeSurface();
+    const action = parseAgentAction({
+      type: "fail",
+      category: "hard",
+      code: "APPLICATION_ERROR",
+      message: "The core service is unavailable.",
+      reason: "The application displayed an internal error.",
+    });
+
+    const outcome = await executeAction(surface, action);
+
+    assert.deepEqual(outcome, {
+      status: "failed",
+      category: "hard",
+      code: "APPLICATION_ERROR",
+      message: "The core service is unavailable.",
+    });
+  });
 });

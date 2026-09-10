@@ -4,7 +4,9 @@ import type { AgentAction } from "./schema.js";
 export type ExecutionOutcome =
   | { status: "continue" }
   | { status: "completed"; summary: string; outputs: Record<string, string> }
-  | { status: "escalated"; reason: string };
+  | { status: "business_outcome"; code: string; message: string }
+  | { status: "escalated"; reason: string }
+  | { status: "failed"; category: "recoverable" | "hard"; code: string; message: string };
 
 export async function executeAction(
   surface: ComputerSurface,
@@ -30,6 +32,21 @@ export async function executeAction(
       return {
         status: "escalated",
         reason: action.reason,
+      };
+
+    case "business_outcome":
+      return {
+        status: "business_outcome",
+        code: action.code,
+        message: action.message,
+      };
+
+    case "fail":
+      return {
+        status: "failed",
+        category: action.category,
+        code: action.code,
+        message: action.message,
       };
 
     default:

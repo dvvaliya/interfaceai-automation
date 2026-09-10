@@ -34,10 +34,10 @@ program
   .description("Accept a natural-language goal and target application")
   .requiredOption("-g, --goal <goal>", "goal for the discovery run")
   .option("-t, --target <url>", "target application URL")
-  .option("--headed", "show the browser window during discovery setup")
-  .action(async (options: { goal: string; target?: string; headed?: boolean }) => {
+  .option("--headless", "run without a visible browser or local human takeover")
+  .action(async (options: { goal: string; target?: string; headless?: boolean }) => {
     const config = loadConfig();
-    await runDiscover(config, options.goal, options.target, options.headed ?? false);
+    await runDiscover(config, options.goal, options.target, options.headless ?? false);
   });
 
 program
@@ -82,10 +82,10 @@ program
   .description("Replay a capability artifact without an LLM")
   .requiredOption("-a, --artifact <path>", "path to a capability artifact")
   .option("-i, --input <key=value>", "typed replay input (repeatable)", collectInput, [])
-  .option("--headed", "show the browser during replay when execution is connected")
-  .action(async (options: { artifact: string; input: string[]; headed?: boolean }) => {
+  .option("--headless", "run without a visible browser or local human takeover")
+  .action(async (options: { artifact: string; input: string[]; headless?: boolean }) => {
     const config = loadConfig();
-    await runReplay(config, options.artifact, options.input, options.headed ?? false);
+    await runReplay(config, options.artifact, options.input, options.headless ?? false);
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {

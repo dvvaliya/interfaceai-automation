@@ -14,7 +14,7 @@ The current implementation contains:
 - a Playwright `login-check` command,
 - an accessibility-based `observe-check` command,
 - a generic surface `action-check` command,
-- a strict Zod schema for controlled `fill`, `click`, `complete`, and `escalate` actions,
+- a strict Zod schema for controlled browser and terminal actions, including business outcomes and failures,
 - an action executor that routes browser actions to the surface and returns typed terminal outcomes,
 - a policy guard with configurable origin, route, and action allowlists plus approval-required decisions,
 - a provider-neutral LLM contract and scripted fake provider for offline testing.
@@ -37,8 +37,10 @@ The API key is optional for the health command. Never commit `.env`.
 ```bash
 npm run dev -- --help
 npm run health
-npm run discover -- --goal "Find member 12345 and return the savings balance" --headed
+npm run discover -- --goal "Find member 12345 and return the savings balance"
+npm run discover -- --goal "Find member 33333 and return the savings balance"
 npm run replay -- --artifact ../artifacts/get_member_savings_balance.json --input memberId=24680
+npm run replay -- --artifact ../artifacts/get_member_savings_balance.json --input memberId=33333
 npm run dev -- browser-check
 npm run dev -- browser-check --headed
 npm run dev -- login-check
@@ -53,7 +55,11 @@ npm run typecheck
 
 `discover` is the main user entry point. It accepts a natural-language goal plus target, runs the bounded LiteLLM agent loop, infers the member parameter from the successful interaction, and validates and writes `../artifacts/get_member_savings_balance.json`. Typed inputs are supplied later when replaying the artifact.
 
+During discovery, concise `[browser]`, `[llm]`, `[agent]`, and `[policy]` messages show progress without printing prompts, raw model responses, credentials, or input values.
+
 `replay` loads and validates an artifact and typed inputs, opens and authenticates the target, executes saved steps with locator fallbacks, detects known outcomes, verifies the checkpoint, extracts outputs, and writes `evidence/replay-run.json`. It never calls LiteLLM.
+
+Discovery and replay open a visible browser by default and automatically pause when intervention is required. The operator uses that same browser, then chooses resume, complete, or abort in the terminal. Resume is rejected if the blocker remains or the page and recorded human actions are unchanged. Use `--headless` only for unattended or CI runs; an intervention is then reported without local takeover.
 
 `browser-check` opens `BANK_APP_URL`, verifies its HTTP response, prints the page title and final URL, and writes `evidence/browser-check.png`. Use `--headed` when you want to watch the browser.
 
