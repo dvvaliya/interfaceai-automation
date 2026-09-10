@@ -4,6 +4,8 @@ import { parseAgentAction } from "../../src/actions/schema.js";
 import {
   assertPolicyAllows,
   evaluateActionPolicy,
+  evaluateLocationPolicy,
+  evaluateOriginPolicy,
   type ActionPolicy,
 } from "../../src/policy/action-policy.js";
 
@@ -14,6 +16,23 @@ const policy: ActionPolicy = {
 };
 
 describe("action policy", () => {
+  it("allows an approved target origin before navigation", () => {
+    const decision = evaluateOriginPolicy(policy, "http://localhost:3000/");
+
+    assert.equal(decision.effect, "allow");
+  });
+
+  it("checks the route after navigation", () => {
+    assert.equal(
+      evaluateLocationPolicy(policy, "http://localhost:3000/members/12345").effect,
+      "allow",
+    );
+    assert.equal(
+      evaluateLocationPolicy(policy, "http://localhost:3000/admin").effect,
+      "block",
+    );
+  });
+
   it("allows a safe member search action", () => {
     const action = parseAgentAction({
       type: "fill",

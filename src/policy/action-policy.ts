@@ -40,19 +40,9 @@ export function evaluateActionPolicy(
     return { effect: "allow", reason: "Escalation is an allowed safe terminal action." };
   }
 
-  let url: URL;
-  try {
-    url = new URL(context.currentUrl);
-  } catch {
-    return { effect: "block", reason: "The current surface URL is invalid." };
-  }
-
-  if (!policy.allowedOrigins.includes(url.origin)) {
-    return { effect: "block", reason: `Origin '${url.origin}' is not allowlisted.` };
-  }
-
-  if (!policy.allowedPathPrefixes.some((prefix) => pathMatches(url.pathname, prefix))) {
-    return { effect: "block", reason: `Path '${url.pathname}' is not allowlisted.` };
+  const locationDecision = evaluateLocationPolicy(policy, context.currentUrl);
+  if (locationDecision.effect !== "allow") {
+    return locationDecision;
   }
 
   if (action.type === "fill" && sensitiveTargetName.test(action.target.name)) {
@@ -70,6 +60,35 @@ export function evaluateActionPolicy(
   }
 
   return { effect: "allow", reason: "The action is within the configured policy." };
+}
+
+export function evaluateOriginPolicy(policy: ActionPolicy, rawUrl: string): PolicyDecision {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return { effect: "block", reason: "The target URL is invalid." };
+  }
+
+  if (!policy.allowedOrigins.includes(url.origin)) {
+    return { effect: "block", reason: `Origin '${url.origin}' is not allowlisted.` };
+  }
+
+  return { effect: "allow", reason: `Origin '${url.origin}' is allowlisted.` };
+}
+
+export function evaluateLocationPolicy(policy: ActionPolicy, rawUrl: string): PolicyDecision {
+  const originDecision = evaluateOriginPolicy(policy, rawUrl);
+  if (originDecision.effect !== "allow") {
+    return originDecision;
+  }
+
+  const url = new URL(rawUrl);
+  if (!policy.allowedPathPrefixes.some((prefix) => pathMatches(url.pathname, prefix))) {
+    return { effect: "block", reason: `Path '${url.pathname}' is not allowlisted.` };
+  }
+
+  return { effect: "allow", reason: "The current surface location is allowlisted." };
 }
 
 export function assertPolicyAllows(decision: PolicyDecision): void {

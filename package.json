@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/cli.ts",
+    "discover": "tsx src/cli.ts discover",
     "health": "tsx src/cli.ts health",
     "test": "tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",

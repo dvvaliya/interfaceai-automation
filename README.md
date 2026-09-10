@@ -16,7 +16,8 @@ The current implementation contains:
 - a generic surface `action-check` command,
 - a strict Zod schema for controlled `fill`, `click`, `complete`, and `escalate` actions,
 - an action executor that routes browser actions to the surface and returns typed terminal outcomes,
-- a policy guard with configurable origin, route, and action allowlists plus approval-required decisions.
+- a policy guard with configurable origin, route, and action allowlists plus approval-required decisions,
+- a provider-neutral LLM contract and scripted fake provider for offline testing.
 
 LLM calls, discovery, artifacts, and replay are not implemented yet.
 
@@ -35,6 +36,7 @@ The API key is optional for the health command. Never commit `.env`.
 ```bash
 npm run dev -- --help
 npm run health
+npm run discover -- --goal "Find member 12345 and return the savings balance" --headed
 npm run dev -- browser-check
 npm run dev -- browser-check --headed
 npm run dev -- login-check
@@ -46,6 +48,8 @@ npm run dev -- action-check --member-id 24680 --headed
 npm test
 npm run typecheck
 ```
+
+`discover` is the main user entry point. It validates the natural-language goal and target URL, enforces the target allowlist, opens the app, signs in, captures the initial observation, and then stops before LLM execution. Add deployed targets to `ALLOWED_ORIGINS` before using `--target`.
 
 `browser-check` opens `BANK_APP_URL`, verifies its HTTP response, prints the page title and final URL, and writes `evidence/browser-check.png`. Use `--headed` when you want to watch the browser.
 

@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { runActionCheck } from "./commands/action-check.js";
 import { runBrowserCheck } from "./commands/browser-check.js";
+import { runDiscover } from "./commands/discover.js";
 import { runHealthCheck } from "./commands/health.js";
 import { runLoginCheck } from "./commands/login-check.js";
 import { runObserveCheck } from "./commands/observe-check.js";
@@ -21,6 +22,17 @@ program
   .action(() => {
     const config = loadConfig();
     runHealthCheck(config);
+  });
+
+program
+  .command("discover")
+  .description("Accept a natural-language goal and target application")
+  .requiredOption("-g, --goal <goal>", "goal for the discovery run")
+  .option("-t, --target <url>", "target application URL")
+  .option("--headed", "show the browser window during discovery setup")
+  .action(async (options: { goal: string; target?: string; headed?: boolean }) => {
+    const config = loadConfig();
+    await runDiscover(config, options.goal, options.target, options.headed ?? false);
   });
 
 program
