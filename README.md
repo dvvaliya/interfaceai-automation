@@ -49,7 +49,7 @@ npm test
 npm run typecheck
 ```
 
-`discover` is the main user entry point. It validates the natural-language goal and target URL, enforces the target allowlist, opens the app, signs in, captures the initial observation, asks LiteLLM for one action, validates and policy-checks that suggestion, and then stops without executing it. Add deployed targets to `ALLOWED_ORIGINS` before using `--target`.
+`discover` is the main user entry point. It validates the goal and target, opens and authenticates the app, then runs a bounded LiteLLM observe-decide-act loop until the model completes, escalates, or hits a safety stop. The structured run is written to `evidence/discovery-run.json`, with a screenshot for each browser state.
 
 `browser-check` opens `BANK_APP_URL`, verifies its HTTP response, prints the page title and final URL, and writes `evidence/browser-check.png`. Use `--headed` when you want to watch the browser.
 

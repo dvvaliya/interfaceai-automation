@@ -1,14 +1,13 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
-import { parseAgentAction } from "../actions/schema.js";
 import type { AppConfig } from "../config/env.js";
-import { parseDiscoveryRequest, type DiscoveryRequest } from "../discovery/request.js";
+import { runAgentLoop, type AgentLoopResult } from "../discovery/agent-loop.js";
+import { parseDiscoveryRequest } from "../discovery/request.js";
 import { createLlmProvider } from "../llm/factory.js";
 import {
   assertPolicyAllows,
   createActionPolicy,
-  evaluateActionPolicy,
   evaluateLocationPolicy,
   evaluateOriginPolicy,
 } from "../policy/action-policy.js";
@@ -20,7 +19,7 @@ export async function runDiscover(
   goal: string,
   targetOverride?: string,
   headed = false,
-): Promise<DiscoveryRequest> {
+): Promise<AgentLoopResult> {
   const request = parseDiscoveryRequest({
     goal,
     target: targetOverride ?? config.BANK_APP_URL,
@@ -68,40 +67,43 @@ export async function runDiscover(
     assertPolicyAllows(evaluateLocationPolicy(policy, page.url()));
 
     const surface = new PlaywrightSurface(page);
-    const initialObservation = await surface.observe("discovery-initial");
     const provider = createLlmProvider(config);
-    const rawAction = await provider.decideNextAction({
+    const result = await runAgentLoop({
       goal: request.goal,
-      observation: initialObservation,
-      stepNumber: 1,
-      actionHistory: [],
+      provider,
+      surface,
+      policy,
+      maxSteps: config.DISCOVERY_MAX_STEPS,
+      timeoutMs: config.DISCOVERY_TIMEOUT_MS,
     });
-    const suggestedAction = parseAgentAction(rawAction);
-    const policyDecision = evaluateActionPolicy(policy, suggestedAction, {
-      currentUrl: page.url(),
-    });
-    const evidencePath = path.resolve("evidence", "discovery-request.json");
+    const evidencePath = path.resolve("evidence", "discovery-run.json");
     await writeFile(
       evidencePath,
       `${JSON.stringify(
-        { request, provider: provider.name, initialObservation, suggestedAction, policyDecision },
+        { request, provider: provider.name, result },
         null,
         2,
       )}\n`,
       "utf8",
     );
 
-    console.log("Initial authenticated observation captured.");
-    console.log(`Current URL: ${initialObservation.url}`);
-    console.log("Validated model suggestion:");
-    console.log(JSON.stringify(suggestedAction, null, 2));
-    console.log(`Policy decision: ${policyDecision.effect} - ${policyDecision.reason}`);
+    console.log(`Discovery status: ${result.status}`);
+    console.log(`Steps: ${result.steps.length}`);
+    if (result.status === "completed") {
+      console.log(`Summary: ${result.summary}`);
+      console.log("Outputs:");
+      console.log(JSON.stringify(result.outputs, null, 2));
+    } else {
+      console.log(`Reason: ${result.reason}`);
+    }
     console.log(`Evidence JSON: ${evidencePath}`);
-    console.log(`Screenshot: ${initialObservation.screenshotPath}`);
-    console.log("The suggested action was not executed in this step.");
+
+    if (result.status === "failed") {
+      throw new Error(`Discovery failed at step ${result.failedStep}: ${result.reason}`);
+    }
+
+    return result;
   } finally {
     await browser.close();
   }
-
-  return request;
 }

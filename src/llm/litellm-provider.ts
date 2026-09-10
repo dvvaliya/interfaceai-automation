@@ -84,8 +84,6 @@ export class LiteLlmProvider implements LlmProvider {
     if (!content) {
       throw new Error("LiteLLM returned an empty message.");
     }
-    console.log(`LiteLLM request completed with HTTP ${content}.`);
-
     return parseJsonContent(content);
   }
 }

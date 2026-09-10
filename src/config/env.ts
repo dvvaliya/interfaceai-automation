@@ -31,6 +31,8 @@ const configSchema = z.object({
   LITELLM_BASE_URL: z.url().optional(),
   LITELLM_API_KEY: z.string().min(1).optional(),
   LITELLM_MODEL: z.string().min(1).optional(),
+  DISCOVERY_MAX_STEPS: z.coerce.number().int().min(1).max(50).default(10),
+  DISCOVERY_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(120_000),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

@@ -11,5 +11,7 @@ export function runHealthCheck(config: AppConfig): void {
     llmBaseUrl: config.LITELLM_BASE_URL || "not configured",
     llmModel: config.LITELLM_MODEL || "not configured",
     llmApiKey: config.LITELLM_API_KEY ? "configured" : "not configured",
+    discoveryMaxSteps: config.DISCOVERY_MAX_STEPS,
+    discoveryTimeoutMs: config.DISCOVERY_TIMEOUT_MS,
   });
 }
