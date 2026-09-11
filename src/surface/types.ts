@@ -7,11 +7,18 @@ export type SurfaceObservation = {
 };
 
 export type HumanActionEvent = {
-  type: "click" | "change" | "navigation";
+  sequence: number;
+  type: "click" | "change" | "navigation" | "state_change";
+  capture: "exact" | "inferred";
   role: string;
   name: string;
+  from?: string;
+  to?: string;
+  description?: string;
   timestamp: string;
 };
+
+export type CapturedHumanAction = Omit<HumanActionEvent, "sequence">;
 
 export type RoleTarget = {
   strategy: "role";
@@ -54,5 +61,5 @@ export interface ComputerSurface {
     outputColumn: string,
   ): Promise<string>;
   beginHumanControl(): Promise<void>;
-  endHumanControl(): Promise<HumanActionEvent[]>;
+  endHumanControl(): Promise<CapturedHumanAction[]>;
 }

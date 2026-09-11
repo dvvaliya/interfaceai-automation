@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { SurfaceObservation } from "../surface/types.js";
-import type { HumanActionEvent, InterventionRequest } from "./types.js";
+import type { CapturedHumanAction, InterventionRequest } from "./types.js";
 
 export class HandoffController {
   private readonly baselineFingerprint: string;
@@ -38,9 +38,12 @@ export class HandoffController {
     this.touch();
   }
 
-  recordHumanAction(action: HumanActionEvent): void {
+  recordHumanAction(action: CapturedHumanAction): void {
     if (this.request.controlOwner === "HUMAN") {
-      this.request.humanActions.push(action);
+      this.request.humanActions.push({
+        ...action,
+        sequence: this.request.humanActions.length + 1,
+      });
       this.touch();
     }
   }
@@ -74,9 +77,12 @@ export class HandoffController {
 
     if (!unchanged && this.request.humanActions.length === 0) {
       this.request.humanActions.push({
+        sequence: 1,
         type: "navigation",
+        capture: "inferred",
         role: "document",
         name: `Page changed to ${redactUrl(input.observation.url)}`,
+        description: "The page changed during human control, but the exact DOM event was unavailable.",
         timestamp: new Date().toISOString(),
       });
     }
@@ -106,7 +112,26 @@ export class HandoffController {
   }
 
   snapshot(): InterventionRequest {
-    return structuredClone(this.request);
+    const snapshot = structuredClone(this.request);
+    const seen = new Set<string>();
+    snapshot.humanActions = snapshot.humanActions
+      .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+      .filter((action) => {
+        const key = JSON.stringify({
+          type: action.type,
+          capture: action.capture,
+          role: action.role,
+          name: action.name,
+          from: action.from,
+          to: action.to,
+          timestamp: action.timestamp,
+        });
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((action, index) => ({ ...action, sequence: index + 1 }));
+    return snapshot;
   }
 
   private touch(): void {

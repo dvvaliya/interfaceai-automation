@@ -1,65 +1,33 @@
 import type { BrowserContext } from "playwright";
+import { humanActionBufferScript } from "../surface/human-action-buffer.js";
 import type { HandoffController } from "./controller.js";
+import type { CapturedHumanAction } from "./types.js";
 
 export async function installHumanActionCapture(
   context: BrowserContext,
   getController: () => HandoffController | undefined,
 ): Promise<void> {
+  await context.exposeBinding(
+    "__interfaceAiRecordHumanAction",
+    (_source, action: CapturedHumanAction) => getController()?.recordHumanAction(action),
+  );
+
   context.on("request", (request) => {
     if (!request.isNavigationRequest()) return;
+    const frame = request.frame();
+    if (frame !== frame.page().mainFrame()) return;
     getController()?.recordHumanAction({
       type: "navigation",
+      capture: "exact",
       role: "document",
-      name: redactNavigationUrl(request.url()),
+      name: "Main document navigation",
+      from: redactNavigationUrl(frame.url()),
+      to: redactNavigationUrl(request.url()),
       timestamp: new Date().toISOString(),
     });
   });
 
-  await context.addInitScript(() => {
-    const describeElement = (element: Element) => {
-      const htmlElement = element as HTMLElement;
-      const labelledElement = element as HTMLInputElement;
-      const tagName = element.tagName.toLowerCase();
-      const implicitRole =
-        tagName === "a"
-          ? "link"
-          : tagName === "button"
-            ? "button"
-            : tagName === "select"
-              ? "combobox"
-              : tagName === "input" || tagName === "textarea"
-                ? "textbox"
-                : tagName;
-      return {
-        role: element.getAttribute("role") || implicitRole,
-        name: (
-          element.getAttribute("aria-label") ||
-          labelledElement.labels?.[0]?.textContent ||
-          htmlElement.innerText ||
-          element.getAttribute("name") ||
-          "unnamed"
-        )
-          .trim()
-          .slice(0, 120),
-      };
-    };
-
-    const report = (type: "click" | "change", event: Event) => {
-      if (!(event.target instanceof Element)) return;
-      if (sessionStorage.getItem("__interfaceAiHumanControl") !== "true") return;
-
-      const control = event.target.closest("button, a, input, select, textarea, [role]") ?? event.target;
-      const details = describeElement(control);
-      const actions = JSON.parse(
-        sessionStorage.getItem("__interfaceAiHumanActions") ?? "[]",
-      ) as Array<Record<string, string>>;
-      actions.push({ ...details, type, timestamp: new Date().toISOString() });
-      sessionStorage.setItem("__interfaceAiHumanActions", JSON.stringify(actions));
-    };
-
-    document.addEventListener("click", (event) => report("click", event), true);
-    document.addEventListener("change", (event) => report("change", event), true);
-  });
+  await context.addInitScript({ content: humanActionBufferScript });
 }
 
 function redactNavigationUrl(rawUrl: string): string {

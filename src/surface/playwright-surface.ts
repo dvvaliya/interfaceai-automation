@@ -3,11 +3,12 @@ import path from "node:path";
 import type { Locator, Page } from "playwright";
 import { repositoryRoot } from "../observability/paths.js";
 import type {
+  CapturedHumanAction,
   ComputerSurface,
-  HumanActionEvent,
   SurfaceObservation,
   SurfaceTarget,
 } from "./types.js";
+import { humanActionBufferScript } from "./human-action-buffer.js";
 
 export class PlaywrightSurface implements ComputerSurface {
   constructor(
@@ -89,24 +90,36 @@ export class PlaywrightSurface implements ComputerSurface {
   }
 
   async beginHumanControl(): Promise<void> {
+    await this.page.evaluate(humanActionBufferScript);
     await this.page.evaluate(() => {
-      sessionStorage.setItem("__interfaceAiHumanActions", "[]");
-      sessionStorage.setItem("__interfaceAiHumanControl", "true");
+      localStorage.setItem("__interfaceAiHumanActions", "[]");
+      localStorage.setItem("__interfaceAiHumanControl", "true");
     });
   }
 
-  async endHumanControl(): Promise<HumanActionEvent[]> {
-    return this.page.evaluate(() => {
-      const rawActions = sessionStorage.getItem("__interfaceAiHumanActions") ?? "[]";
-      sessionStorage.setItem("__interfaceAiHumanControl", "false");
-      sessionStorage.setItem("__interfaceAiHumanActions", "[]");
-
+  async endHumanControl(): Promise<CapturedHumanAction[]> {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        return JSON.parse(rawActions) as HumanActionEvent[];
-      } catch {
-        return [];
+        return await this.page.evaluate(() => {
+          const rawActions = localStorage.getItem("__interfaceAiHumanActions") ?? "[]";
+          localStorage.setItem("__interfaceAiHumanControl", "false");
+          localStorage.setItem("__interfaceAiHumanActions", "[]");
+
+          try {
+            return JSON.parse(rawActions) as CapturedHumanAction[];
+          } catch {
+            return [];
+          }
+        });
+      } catch (error) {
+        const contextChanged =
+          error instanceof Error && error.message.includes("Execution context was destroyed");
+        if (!contextChanged || attempt === 2) throw error;
+        await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
       }
-    });
+    }
+
+    return [];
   }
 
   private resolveTarget(target: SurfaceTarget): Locator {

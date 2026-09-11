@@ -41,6 +41,7 @@ describe("handoff controller", () => {
     controller.cedeToHuman();
     controller.recordHumanAction({
       type: "click",
+      capture: "exact",
       role: "button",
       name: "Unrelated action",
       timestamp: "2026-09-10T00:00:01.000Z",
@@ -61,6 +62,7 @@ describe("handoff controller", () => {
     controller.cedeToHuman();
     controller.recordHumanAction({
       type: "click",
+      capture: "exact",
       role: "link",
       name: "Continue and record access",
       timestamp: "2026-09-10T00:00:01.000Z",
@@ -85,6 +87,7 @@ describe("handoff controller", () => {
     const controller = createController();
     controller.recordHumanAction({
       type: "change",
+      capture: "exact",
       role: "input",
       name: "Member Number",
       timestamp: "2026-09-10T00:00:01.000Z",
