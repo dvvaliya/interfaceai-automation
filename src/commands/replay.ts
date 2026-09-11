@@ -1,4 +1,3 @@
-import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { loadCapabilityArtifact } from "../artifacts/loader.js";
@@ -7,6 +6,7 @@ import { HandoffController } from "../handoff/controller.js";
 import { installHumanActionCapture } from "../handoff/instrumentation.js";
 import { runOperatorHandoff } from "../handoff/operator-cli.js";
 import { saveIntervention } from "../handoff/store.js";
+import { RunEvidence } from "../observability/run-evidence.js";
 import {
   assertPolicyAllows,
   createActionPolicy,
@@ -28,6 +28,17 @@ export async function runReplay(
   const artifact = await loadCapabilityArtifact(artifactPath);
   const inputs = resolveReplayInputs(artifact.inputs, inputAssignments);
   const steps = resolveReplaySteps(artifact, inputs);
+  const sensitiveValues = Object.entries(inputs)
+    .filter(([name]) => artifact.inputs[name]?.sensitive)
+    .map(([, value]) => String(value));
+  const runEvidence = await RunEvidence.create("replay", {
+    redactionValues: sensitiveValues,
+  });
+  runEvidence.record("run_started", {
+    capability: artifact.id,
+    capabilityVersion: artifact.capabilityVersion,
+    inputs,
+  });
   const entryOrigin = new URL(artifact.surface.entryUrl).origin;
 
   if (!artifact.surface.allowedOrigins.includes(entryOrigin)) {
@@ -62,7 +73,8 @@ export async function runReplay(
     });
     assertPolicyAllows(evaluateLocationPolicy(policy, page.url()));
 
-    const surface = new PlaywrightSurface(page);
+    runEvidence.record("authenticated", { url: page.url() });
+    const surface = new PlaywrightSurface(page, runEvidence.screenshotsDirectory);
     let result = await executeReplay({ artifact, steps, surface, policy });
     let interventionCount = 0;
 
@@ -98,6 +110,8 @@ export async function runReplay(
         cancelledText: result.cancelledText,
         timeoutMs: config.HANDOFF_TIMEOUT_MS,
         maxResumeAttempts: config.HANDOFF_MAX_RESUME_ATTEMPTS,
+        evidenceDirectory: path.join(runEvidence.directory, "handoff"),
+        redactionValues: sensitiveValues,
       });
 
       if (operatorDecision === "abort" || operatorDecision === "timeout") {
@@ -131,34 +145,33 @@ export async function runReplay(
       } else if (result.status === "failure") {
         controller.abort();
       }
-      await saveIntervention(controller.snapshot());
+      await saveIntervention(
+        controller.snapshot(),
+        path.join(runEvidence.directory, "handoff"),
+        sensitiveValues,
+      );
       activeController = undefined;
     }
 
-    const evidencePath = path.resolve("evidence", "replay-run.json");
     const redactedInputs = Object.fromEntries(
       Object.entries(inputs).map(([name, value]) => [
         name,
         artifact.inputs[name]?.sensitive ? "[REDACTED]" : value,
       ]),
     );
-    await writeFile(
-      evidencePath,
-      `${JSON.stringify(
-        {
-          capability: artifact.id,
-          capabilityVersion: artifact.capabilityVersion,
-          inputs: redactedInputs,
-          result,
-        },
-        null,
-        2,
-      )}\n`,
-      "utf8",
-    );
+    if (result.status === "success") {
+      runEvidence.addRedactionValues(Object.values(result.outputs));
+    }
+    runEvidence.record("run_finished", { status: result.status, stepCount: result.steps.length });
+    await runEvidence.writeJson("result.json", {
+      capability: artifact.id,
+      capabilityVersion: artifact.capabilityVersion,
+      inputs: redactedInputs,
+      result,
+    });
 
     console.log(`\nSteps executed: ${result.steps.length}`);
-    console.log(`Evidence: ${evidencePath}`);
+    console.log(`Evidence: ${runEvidence.directory}`);
     console.log("\n=== FINAL RESULT ===");
     console.log(`Status: ${result.status}`);
     if (result.status === "success") {
@@ -177,7 +190,13 @@ export async function runReplay(
 
     if (result.status === "failure") process.exitCode = 1;
     return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown replay error.";
+    runEvidence.record("run_failed", { message });
+    await runEvidence.writeJson("failure.json", { status: "failure", message });
+    throw error;
   } finally {
+    await runEvidence.flush();
     await browser.close();
   }
 }

@@ -92,4 +92,22 @@ describe("handoff controller", () => {
 
     assert.equal(controller.snapshot().humanActions.length, 0);
   });
+
+  it("records a coarse navigation when the page changed but the DOM click event was lost", () => {
+    const controller = createController();
+    controller.cedeToHuman();
+
+    const result = controller.tryResume({
+      observation: {
+        ...before,
+        url: "http://localhost:3000/members/33333",
+        accessibilitySnapshot: 'heading "Member Profile"',
+      },
+      blockerVisible: false,
+      locationAllowed: true,
+    });
+
+    assert.equal(result.resumed, true);
+    assert.equal(controller.snapshot().humanActions[0]?.type, "navigation");
+  });
 });

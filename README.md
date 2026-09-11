@@ -20,7 +20,7 @@ The current implementation contains:
 - a provider-neutral LLM contract and scripted fake provider for offline testing.
 - a typed, versioned capability artifact schema with parameterized inputs, outputs, checkpoints, locator fallbacks, and known outcomes.
 
-LLM calls, discovery, artifacts, and replay are not implemented yet.
+The end-to-end discovery, artifact generation, deterministic replay, error classification, and same-session human handoff paths are implemented for the member-balance capability.
 
 ## Setup
 
@@ -57,14 +57,14 @@ npm run typecheck
 
 During discovery, concise `[browser]`, `[llm]`, `[agent]`, and `[policy]` messages show progress without printing prompts, raw model responses, credentials, or input values.
 
-`replay` loads and validates an artifact and typed inputs, opens and authenticates the target, executes saved steps with locator fallbacks, detects known outcomes, verifies the checkpoint, extracts outputs, and writes `evidence/replay-run.json`. It never calls LiteLLM.
+`replay` loads and validates an artifact and typed inputs, opens and authenticates the target, executes saved steps with locator fallbacks, detects known outcomes, verifies the checkpoint, extracts outputs, and writes run-scoped evidence under `../evidence/replay/`. It never calls LiteLLM.
 
 Discovery and replay open a visible browser by default and automatically pause when intervention is required. The operator uses that same browser, then chooses resume, complete, or abort in the terminal. Resume is rejected if the blocker remains or the page and recorded human actions are unchanged. Use `--headless` only for unattended or CI runs; an intervention is then reported without local takeover.
 
-`browser-check` opens `BANK_APP_URL`, verifies its HTTP response, prints the page title and final URL, and writes `evidence/browser-check.png`. Use `--headed` when you want to watch the browser.
+`browser-check` opens `BANK_APP_URL`, verifies its HTTP response, and writes run-scoped evidence under `../evidence/check/`. Use `--headed` when you want to watch the browser.
 
-`login-check` reads credentials from `.env`, signs in through the real UI, verifies the Member Inquiry heading, and writes `evidence/login-check.png`. Credentials are never printed.
+`login-check` reads credentials from `.env`, signs in through the real UI, verifies the Member Inquiry heading, and writes run-scoped evidence under `../evidence/check/`. Credentials are never printed.
 
-`observe-check` signs in, captures the page's accessibility snapshot and screenshot through the generic Playwright surface, and writes `evidence/observe-check.json` plus `evidence/observe-check.png`.
+`observe-check` signs in and captures the page's accessibility snapshot and screenshot under a unique `../evidence/check/<run-id>/` directory.
 
-`action-check` signs in and uses only the generic surface's role-based `fill` and `click` methods to open a successful member profile. It writes before/after screenshots and `evidence/action-check.json`.
+`action-check` signs in and uses only the generic surface's role-based `fill` and `click` methods to open a successful member profile. It writes run-scoped before/after evidence under `../evidence/check/`.

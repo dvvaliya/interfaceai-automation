@@ -72,6 +72,15 @@ export class HandoffController {
       return { resumed: false, reason: "The page is unchanged and no human action was recorded." };
     }
 
+    if (!unchanged && this.request.humanActions.length === 0) {
+      this.request.humanActions.push({
+        type: "navigation",
+        role: "document",
+        name: `Page changed to ${redactUrl(input.observation.url)}`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     this.request.controlOwner = "AUTOMATION";
     this.request.status = "resumed";
     this.touch();

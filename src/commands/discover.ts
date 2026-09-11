@@ -1,8 +1,7 @@
-import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { generateMemberBalanceArtifact } from "../artifacts/generator.js";
-import { saveCapabilityArtifact } from "../artifacts/store.js";
+import { saveCapabilityArtifact, saveExampleArtifact } from "../artifacts/store.js";
 import type { AppConfig } from "../config/env.js";
 import { HandoffController } from "../handoff/controller.js";
 import { installHumanActionCapture } from "../handoff/instrumentation.js";
@@ -11,6 +10,7 @@ import { saveIntervention } from "../handoff/store.js";
 import { runAgentLoop, type AgentLoopResult } from "../discovery/agent-loop.js";
 import { parseDiscoveryRequest } from "../discovery/request.js";
 import { createLlmProvider } from "../llm/factory.js";
+import { RunEvidence } from "../observability/run-evidence.js";
 import {
   assertPolicyAllows,
   createActionPolicy,
@@ -30,6 +30,10 @@ export async function runDiscover(
     goal,
     target: targetOverride ?? config.BANK_APP_URL,
   });
+  const runEvidence = await RunEvidence.create("discovery", {
+    redactionValues: request.goal.match(/\b\d{5}\b/g) ?? [],
+  });
+  runEvidence.record("run_started", { request });
 
   console.log("Discovery request accepted.");
   console.table({
@@ -76,8 +80,13 @@ export async function runDiscover(
 
     assertPolicyAllows(evaluateLocationPolicy(policy, page.url()));
 
-    const surface = new PlaywrightSurface(page);
+    runEvidence.record("authenticated", { url: page.url() });
+    const surface = new PlaywrightSurface(page, runEvidence.screenshotsDirectory);
     const provider = createLlmProvider(config);
+    const reportProgress = (message: string) => {
+      console.log(message);
+      runEvidence.record("progress", { message });
+    };
     let result = await runAgentLoop({
       goal: request.goal,
       provider,
@@ -85,7 +94,7 @@ export async function runDiscover(
       policy,
       maxSteps: config.DISCOVERY_MAX_STEPS,
       timeoutMs: config.DISCOVERY_TIMEOUT_MS,
-      onProgress: (message) => console.log(message),
+      onProgress: reportProgress,
     });
     let usedHandoff = false;
     let interventionCount = 0;
@@ -104,6 +113,11 @@ export async function runDiscover(
       }
 
       const beforeHandoff = await surface.observe("handoff-before");
+      runEvidence.record("intervention_requested", {
+        reason: result.reason,
+        stepCount: result.steps.length,
+        observation: beforeHandoff,
+      });
       const blockerText = (await surface.isVisible(
         { strategy: "text", text: "Restricted Record Warning", exact: true },
         300,
@@ -128,6 +142,8 @@ export async function runDiscover(
           : undefined,
         timeoutMs: config.HANDOFF_TIMEOUT_MS,
         maxResumeAttempts: config.HANDOFF_MAX_RESUME_ATTEMPTS,
+        evidenceDirectory: path.join(runEvidence.directory, "handoff"),
+        redactionValues: request.goal.match(/\b\d{5}\b/g) ?? [],
       });
 
       if (operatorDecision === "abort" || operatorDecision === "timeout") {
@@ -155,35 +171,38 @@ export async function runDiscover(
         evidencePrefix: `discovery-resume-${interventionCount}`,
         initialActionHistory: previousSteps.map((step) => step.action),
         stepNumberOffset: previousSteps.length,
-        onProgress: (message) => console.log(message),
+        onProgress: reportProgress,
       });
       result = { ...resumedResult, steps: [...previousSteps, ...resumedResult.steps] };
 
       if (result.status === "completed") controller.complete();
       if (result.status === "failed") controller.abort();
-      await saveIntervention(controller.snapshot());
+      await saveIntervention(
+        controller.snapshot(),
+        path.join(runEvidence.directory, "handoff"),
+        request.goal.match(/\b\d{5}\b/g) ?? [],
+      );
       activeController = undefined;
     }
 
     let artifactPath: string | undefined;
     if (result.status === "completed" && !usedHandoff) {
+      runEvidence.addRedactionValues(Object.values(result.outputs));
       const artifact = generateMemberBalanceArtifact(request, result);
       artifactPath = await saveCapabilityArtifact(artifact);
+      await saveExampleArtifact(artifact);
     }
 
-    const evidencePath = path.resolve("evidence", "discovery-run.json");
-    await writeFile(
-      evidencePath,
-      `${JSON.stringify(
-        { request, provider: provider.name, result, artifactPath },
-        null,
-        2,
-      )}\n`,
-      "utf8",
-    );
+    runEvidence.record("run_finished", { status: result.status, stepCount: result.steps.length });
+    const evidencePath = await runEvidence.writeJson("result.json", {
+      request,
+      provider: provider.name,
+      result,
+      artifactPath,
+    });
 
     console.log(`\nSteps executed: ${result.steps.length}`);
-    console.log(`Evidence: ${evidencePath}`);
+    console.log(`Evidence: ${runEvidence.directory}`);
     if (artifactPath) {
       console.log(`Artifact: ${artifactPath}`);
     } else if (usedHandoff) {
@@ -210,7 +229,13 @@ export async function runDiscover(
     }
 
     return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown discovery error.";
+    runEvidence.record("run_failed", { message });
+    await runEvidence.writeJson("failure.json", { status: "failure", message });
+    throw error;
   } finally {
+    await runEvidence.flush();
     await browser.close();
   }
 }

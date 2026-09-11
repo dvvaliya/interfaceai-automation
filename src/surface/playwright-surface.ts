@@ -1,12 +1,18 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { Locator, Page } from "playwright";
-import type { ComputerSurface, SurfaceObservation, SurfaceTarget } from "./types.js";
+import { repositoryRoot } from "../observability/paths.js";
+import type {
+  ComputerSurface,
+  HumanActionEvent,
+  SurfaceObservation,
+  SurfaceTarget,
+} from "./types.js";
 
 export class PlaywrightSurface implements ComputerSurface {
   constructor(
     private readonly page: Page,
-    private readonly evidenceDirectory = path.resolve("evidence"),
+    private readonly evidenceDirectory: string,
   ) {}
 
   async observe(evidenceName: string): Promise<SurfaceObservation> {
@@ -27,7 +33,7 @@ export class PlaywrightSurface implements ComputerSurface {
       url: this.page.url(),
       title,
       accessibilitySnapshot,
-      screenshotPath,
+      screenshotPath: path.relative(repositoryRoot, screenshotPath),
       observedAt: new Date().toISOString(),
     };
   }
@@ -80,6 +86,27 @@ export class PlaywrightSurface implements ComputerSurface {
     }
 
     throw new Error(`Could not find a table row where '${rowMatch.column}' is '${rowMatch.value}'.`);
+  }
+
+  async beginHumanControl(): Promise<void> {
+    await this.page.evaluate(() => {
+      sessionStorage.setItem("__interfaceAiHumanActions", "[]");
+      sessionStorage.setItem("__interfaceAiHumanControl", "true");
+    });
+  }
+
+  async endHumanControl(): Promise<HumanActionEvent[]> {
+    return this.page.evaluate(() => {
+      const rawActions = sessionStorage.getItem("__interfaceAiHumanActions") ?? "[]";
+      sessionStorage.setItem("__interfaceAiHumanControl", "false");
+      sessionStorage.setItem("__interfaceAiHumanActions", "[]");
+
+      try {
+        return JSON.parse(rawActions) as HumanActionEvent[];
+      } catch {
+        return [];
+      }
+    });
   }
 
   private resolveTarget(target: SurfaceTarget): Locator {

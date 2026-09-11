@@ -15,9 +15,16 @@ export async function runOperatorHandoff(options: {
   cancelledText?: string;
   timeoutMs: number;
   maxResumeAttempts: number;
+  evidenceDirectory?: string;
+  redactionValues?: readonly string[];
 }): Promise<OperatorDecision> {
   options.controller.cedeToHuman();
-  const requestPath = await saveIntervention(options.controller.snapshot());
+  await options.surface.beginHumanControl();
+  const requestPath = await saveIntervention(
+    options.controller.snapshot(),
+    options.evidenceDirectory,
+    options.redactionValues,
+  );
   const readline = createInterface({ input, output });
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), options.timeoutMs);
@@ -37,14 +44,22 @@ export async function runOperatorHandoff(options: {
         .trim()
         .toLowerCase();
 
+      const humanActions = await options.surface.endHumanControl();
+      for (const action of humanActions) options.controller.recordHumanAction(action);
+
       if (answer === "a") {
         options.controller.abort();
-        await saveIntervention(options.controller.snapshot());
+        await saveIntervention(
+          options.controller.snapshot(),
+          options.evidenceDirectory,
+          options.redactionValues,
+        );
         return "abort";
       }
 
       if (answer !== "r" && answer !== "c") {
         console.log("Enter r, c, or a.");
+        await options.surface.beginHumanControl();
         continue;
       }
 
@@ -57,7 +72,11 @@ export async function runOperatorHandoff(options: {
         : false;
       if (cancelled) {
         options.controller.abort();
-        await saveIntervention(options.controller.snapshot());
+        await saveIntervention(
+          options.controller.snapshot(),
+          options.evidenceDirectory,
+          options.redactionValues,
+        );
         console.log("The human cancelled the protected operation. The run will stop.");
         return "abort";
       }
@@ -75,29 +94,50 @@ export async function runOperatorHandoff(options: {
         blockerVisible,
         locationAllowed,
       });
-      await saveIntervention(options.controller.snapshot());
+      await saveIntervention(
+        options.controller.snapshot(),
+        options.evidenceDirectory,
+        options.redactionValues,
+      );
 
       if (!resume.resumed) {
         console.log(`Cannot resume: ${resume.reason}`);
+        await options.surface.beginHumanControl();
         continue;
       }
 
-      await saveIntervention(options.controller.snapshot());
+      await saveIntervention(
+        options.controller.snapshot(),
+        options.evidenceDirectory,
+        options.redactionValues,
+      );
       return answer === "c" ? "complete" : "resume";
     }
 
     options.controller.abort();
-    await saveIntervention(options.controller.snapshot());
+    await saveIntervention(
+      options.controller.snapshot(),
+      options.evidenceDirectory,
+      options.redactionValues,
+    );
     return "abort";
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       options.controller.timeOut();
-      await saveIntervention(options.controller.snapshot());
+      await saveIntervention(
+        options.controller.snapshot(),
+        options.evidenceDirectory,
+        options.redactionValues,
+      );
       return "timeout";
     }
     if (error instanceof Error && error.message === "readline was closed") {
       options.controller.abort();
-      await saveIntervention(options.controller.snapshot());
+      await saveIntervention(
+        options.controller.snapshot(),
+        options.evidenceDirectory,
+        options.redactionValues,
+      );
       return "abort";
     }
     throw error;

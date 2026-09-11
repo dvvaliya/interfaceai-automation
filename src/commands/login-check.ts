@@ -1,7 +1,8 @@
-import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import type { AppConfig } from "../config/env.js";
+import { repositoryRoot } from "../observability/paths.js";
+import { RunEvidence } from "../observability/run-evidence.js";
 import { authenticateBankDemo } from "../targets/bank-demo/authenticate.js";
 
 export async function runLoginCheck(config: AppConfig, headed: boolean): Promise<void> {
@@ -12,6 +13,8 @@ export async function runLoginCheck(config: AppConfig, headed: boolean): Promise
   }
 
   console.log(`Opening ${config.BANK_APP_URL}`);
+  const runEvidence = await RunEvidence.create("check");
+  runEvidence.record("login_check_started", { target: config.BANK_APP_URL });
 
   const browser = await chromium.launch({ headless: !headed });
 
@@ -35,16 +38,22 @@ export async function runLoginCheck(config: AppConfig, headed: boolean): Promise
       password: config.BANK_OPERATOR_PASSWORD,
     });
 
-    const screenshotDirectory = path.resolve("evidence");
-    const screenshotPath = path.join(screenshotDirectory, "login-check.png");
-    await mkdir(screenshotDirectory, { recursive: true });
+    const screenshotPath = path.join(runEvidence.screenshotsDirectory, "login-check.png");
     await page.screenshot({ path: screenshotPath, fullPage: true });
 
+    const result = {
+      status: "success",
+      finalUrl: page.url(),
+      screenshotPath: path.relative(repositoryRoot, screenshotPath),
+    };
+    runEvidence.record("login_check_passed", result);
+    await runEvidence.writeJson("result.json", result);
     console.log("Logged in successfully.");
     console.log(`Final URL: ${page.url()}`);
     console.log(`Screenshot: ${screenshotPath}`);
     console.log("Login check passed.");
   } finally {
+    await runEvidence.flush();
     await browser.close();
   }
 }

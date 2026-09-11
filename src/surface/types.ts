@@ -6,6 +6,13 @@ export type SurfaceObservation = {
   observedAt: string;
 };
 
+export type HumanActionEvent = {
+  type: "click" | "change" | "navigation";
+  role: string;
+  name: string;
+  timestamp: string;
+};
+
 export type RoleTarget = {
   strategy: "role";
   role:
@@ -46,4 +53,6 @@ export interface ComputerSurface {
     rowMatch: { column: string; value: string },
     outputColumn: string,
   ): Promise<string>;
+  beginHumanControl(): Promise<void>;
+  endHumanControl(): Promise<HumanActionEvent[]>;
 }

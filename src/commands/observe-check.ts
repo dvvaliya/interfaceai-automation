@@ -1,7 +1,6 @@
-import { writeFile } from "node:fs/promises";
-import path from "node:path";
 import { chromium } from "playwright";
 import type { AppConfig } from "../config/env.js";
+import { RunEvidence } from "../observability/run-evidence.js";
 import { PlaywrightSurface } from "../surface/playwright-surface.js";
 import { authenticateBankDemo } from "../targets/bank-demo/authenticate.js";
 
@@ -13,6 +12,8 @@ export async function runObserveCheck(config: AppConfig, headed: boolean): Promi
   }
 
   console.log(`Opening ${config.BANK_APP_URL}`);
+  const runEvidence = await RunEvidence.create("check");
+  runEvidence.record("observe_check_started", { target: config.BANK_APP_URL });
 
   const browser = await chromium.launch({ headless: !headed });
 
@@ -36,10 +37,10 @@ export async function runObserveCheck(config: AppConfig, headed: boolean): Promi
       password: config.BANK_OPERATOR_PASSWORD,
     });
 
-    const surface = new PlaywrightSurface(page);
+    const surface = new PlaywrightSurface(page, runEvidence.screenshotsDirectory);
     const observation = await surface.observe("observe-check");
-    const observationPath = path.resolve("evidence", "observe-check.json");
-    await writeFile(observationPath, `${JSON.stringify(observation, null, 2)}\n`, "utf8");
+    runEvidence.record("observe_check_passed", { observation });
+    const observationPath = await runEvidence.writeJson("observation.json", observation);
 
     console.log("Page observation:");
     console.log(observation.accessibilitySnapshot);
@@ -47,6 +48,7 @@ export async function runObserveCheck(config: AppConfig, headed: boolean): Promi
     console.log(`Screenshot: ${observation.screenshotPath}`);
     console.log("Observe check passed.");
   } finally {
+    await runEvidence.flush();
     await browser.close();
   }
 }

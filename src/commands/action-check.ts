@@ -1,5 +1,3 @@
-import { writeFile } from "node:fs/promises";
-import path from "node:path";
 import { chromium } from "playwright";
 import { z } from "zod";
 import { executeAction } from "../actions/executor.js";
@@ -10,6 +8,7 @@ import {
   createActionPolicy,
   evaluateActionPolicy,
 } from "../policy/action-policy.js";
+import { RunEvidence } from "../observability/run-evidence.js";
 import { PlaywrightSurface } from "../surface/playwright-surface.js";
 import { authenticateBankDemo } from "../targets/bank-demo/authenticate.js";
 
@@ -28,6 +27,8 @@ export async function runActionCheck(
 
   const memberId = memberIdSchema.parse(memberIdInput);
   console.log(`Opening ${config.BANK_APP_URL}`);
+  const runEvidence = await RunEvidence.create("check", { redactionValues: [memberId] });
+  runEvidence.record("action_check_started", { target: config.BANK_APP_URL, memberId });
 
   const browser = await chromium.launch({ headless: !headed });
 
@@ -51,7 +52,7 @@ export async function runActionCheck(
       password: config.BANK_OPERATOR_PASSWORD,
     });
 
-    const surface = new PlaywrightSurface(page);
+    const surface = new PlaywrightSurface(page, runEvidence.screenshotsDirectory);
     const policy = createActionPolicy(config);
     const before = await surface.observe("action-check-before");
 
@@ -83,12 +84,19 @@ export async function runActionCheck(
     });
 
     const after = await surface.observe("action-check-after");
-    const evidencePath = path.resolve("evidence", "action-check.json");
-    await writeFile(
-      evidencePath,
-      `${JSON.stringify({ memberId, actions, policyDecisions, before, after }, null, 2)}\n`,
-      "utf8",
-    );
+    runEvidence.record("action_check_passed", {
+      memberId,
+      actions,
+      policyDecisions,
+      finalUrl: after.url,
+    });
+    const evidencePath = await runEvidence.writeJson("result.json", {
+      memberId,
+      actions,
+      policyDecisions,
+      before,
+      after,
+    });
 
     console.log(`Member ${memberId} opened successfully.`);
     console.log(`Final URL: ${after.url}`);
@@ -96,6 +104,7 @@ export async function runActionCheck(
     console.log(`Final screenshot: ${after.screenshotPath}`);
     console.log("Action check passed.");
   } finally {
+    await runEvidence.flush();
     await browser.close();
   }
 }
