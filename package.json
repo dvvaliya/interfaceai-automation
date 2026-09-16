@@ -9,7 +9,7 @@
     "health": "tsx src/cli.ts health",
     "replay": "tsx src/cli.ts replay",
     "test": "tsx --test tests/**/*.test.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tests/tsconfig.json",
     "build": "tsc"
   },
   "dependencies": {

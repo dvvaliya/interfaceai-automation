@@ -18,7 +18,7 @@ describe("run evidence", () => {
       run.record("started", {
         goal: "Find member 12345",
         password: "do-not-store",
-        apiKey: "sk-example-secret",
+        apiKey: "test-secret-value",
       });
       run.addRedactionValues(["Alex Morgan", "$2,450.75"]);
       await run.writeJson("result.json", {
@@ -32,7 +32,7 @@ describe("run evidence", () => {
       assert.match(log, /"event":"started"/);
       assert.equal(log.includes("12345"), false);
       assert.equal(log.includes("do-not-store"), false);
-      assert.equal(log.includes("sk-example-secret"), false);
+      assert.equal(log.includes("test-secret-value"), false);
       assert.equal(result.includes("Alex Morgan"), false);
       assert.equal(result.includes("$2,450.75"), false);
       assert.match(run.logPath, /discovery\/test-run\/run\.jsonl$/);

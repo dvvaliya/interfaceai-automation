@@ -17,7 +17,7 @@ The current implementation contains:
 - a strict Zod schema for controlled browser and terminal actions, including business outcomes and failures,
 - an action executor that routes browser actions to the surface and returns typed terminal outcomes,
 - a policy guard with configurable origin, route, and action allowlists plus approval-required decisions,
-- a provider-neutral LLM contract and scripted fake provider for offline testing.
+- a provider-neutral LLM contract and scripted fake provider for offline testing,
 - a typed, versioned capability artifact schema with parameterized inputs, outputs, checkpoints, locator fallbacks, and known outcomes.
 
 The end-to-end discovery, artifact generation, deterministic replay, error classification, and same-session human handoff paths are implemented for the member-balance capability.
