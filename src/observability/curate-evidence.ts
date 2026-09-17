@@ -9,6 +9,7 @@ type Selection = {
   runId: string;
   status: string;
   description: string;
+  preserveExisting?: boolean;
 };
 
 type EvidenceData = {
@@ -16,7 +17,12 @@ type EvidenceData = {
   artifactPath?: string;
 };
 
-type LoadedRun = { runId: string; data: EvidenceData; hasHandoff: boolean };
+type LoadedRun = {
+  kind: "discovery" | "replay";
+  runId: string;
+  data: EvidenceData;
+  hasHandoff: boolean;
+};
 
 const finalDirectory = path.join(evidenceRoot, "final");
 
@@ -24,6 +30,7 @@ async function main(): Promise<void> {
   const discoveryRuns = await loadRuns("discovery");
   const replayRuns = await loadRuns("replay");
 
+  const handoffSelection = await selectHandoffRun([...discoveryRuns, ...replayRuns]);
   const selections: Selection[] = [
     selectRun(discoveryRuns, "discovery-success", "completed", "Real LiteLLM discovery run"),
     selectRun(replayRuns, "replay-success", "success", "Deterministic replay without an LLM"),
@@ -48,22 +55,23 @@ async function main(): Promise<void> {
       "Session-expired bounded recovery attempt",
       "SESSION_EXPIRED",
     ),
-    selectHandoffRun(discoveryRuns),
+    ...(handoffSelection ? [handoffSelection] : []),
   ];
 
-  await rm(finalDirectory, { recursive: true, force: true });
   await mkdir(finalDirectory, { recursive: true });
 
   for (const selection of selections) {
+    if (selection.preserveExisting) continue;
     const source = path.join(evidenceRoot, selection.kind, selection.runId);
     const destination = path.join(finalDirectory, selection.label);
+    await rm(destination, { recursive: true, force: true });
     await cp(source, destination, { recursive: true });
     await sanitizeDirectory(destination, `evidence/final/${selection.label}`);
   }
 
   const manifest = {
     generatedAt: new Date().toISOString(),
-    runs: selections,
+    runs: selections.map(({ preserveExisting: _preserveExisting, ...selection }) => selection),
   };
   await writeFile(
     path.join(finalDirectory, "manifest.json"),
@@ -85,6 +93,7 @@ async function loadRuns(
       const raw = await readFile(path.join(directory, entry.name, "result.json"), "utf8");
       const childEntries = await readdir(path.join(directory, entry.name), { withFileTypes: true });
       runs.push({
+        kind,
         runId: entry.name,
         data: JSON.parse(raw) as EvidenceData,
         hasHandoff: childEntries.some((child) => child.isDirectory() && child.name === "handoff"),
@@ -116,14 +125,24 @@ function selectRun(
   };
 }
 
-function selectHandoffRun(runs: LoadedRun[]): Selection {
+async function selectHandoffRun(runs: LoadedRun[]): Promise<Selection | undefined> {
   const match = runs.find(
     (run) => run.data?.result?.status === "completed" && run.hasHandoff,
   );
-  if (!match) throw new Error("No completed human-handoff discovery run is available.");
+  if (!match) {
+    try {
+      const existingManifest = JSON.parse(
+        await readFile(path.join(finalDirectory, "manifest.json"), "utf8"),
+      ) as { runs?: Selection[] };
+      const existing = existingManifest.runs?.find((run) => run.label === "human-handoff");
+      return existing ? { ...existing, preserveExisting: true } : undefined;
+    } catch {
+      return undefined;
+    }
+  }
   return {
     label: "human-handoff",
-    kind: "discovery",
+    kind: match.kind,
     runId: match.runId,
     status: "completed",
     description: "Same-session human takeover and resume",

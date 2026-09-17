@@ -19,6 +19,7 @@ import {
 } from "../policy/action-policy.js";
 import { PlaywrightSurface } from "../surface/playwright-surface.js";
 import { authenticateBankDemo } from "../targets/bank-demo/authenticate.js";
+import { validateMemberBalanceCompletion } from "../targets/bank-demo/validate-member-balance.js";
 
 export async function runDiscover(
   config: AppConfig,
@@ -206,6 +207,18 @@ export async function runDiscover(
         request.goal.match(/\b\d{5}\b/g) ?? [],
       );
       activeController = undefined;
+    }
+
+    if (result.status === "completed") {
+      const savingsBalance = await validateMemberBalanceCompletion(surface);
+      result = {
+        ...result,
+        outputs: { ...result.outputs, savingsBalance },
+      };
+      runEvidence.record("discovery_completion_validated", {
+        checkpoint: "Member Profile",
+        outputNames: ["savingsBalance"],
+      });
     }
 
     let artifactPath: string | undefined;
