@@ -1,12 +1,8 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { runActionCheck } from "./commands/action-check.js";
-import { runBrowserCheck } from "./commands/browser-check.js";
 import { runDiscover } from "./commands/discover.js";
 import { runHealthCheck } from "./commands/health.js";
-import { runLoginCheck } from "./commands/login-check.js";
-import { runObserveCheck } from "./commands/observe-check.js";
 import { runReplay } from "./commands/replay.js";
 import { loadConfig } from "./config/env.js";
 
@@ -38,43 +34,6 @@ program
   .action(async (options: { goal: string; target?: string; headless?: boolean }) => {
     const config = loadConfig();
     await runDiscover(config, options.goal, options.target, options.headless ?? false);
-  });
-
-program
-  .command("browser-check")
-  .description("Open the bank app and capture a verification screenshot")
-  .option("--headed", "show the browser window while checking")
-  .action(async (options: { headed?: boolean }) => {
-    const config = loadConfig();
-    await runBrowserCheck(config, options.headed ?? false);
-  });
-
-program
-  .command("login-check")
-  .description("Log in to the bank app and capture a verification screenshot")
-  .option("--headed", "show the browser window while checking")
-  .action(async (options: { headed?: boolean }) => {
-    const config = loadConfig();
-    await runLoginCheck(config, options.headed ?? false);
-  });
-
-program
-  .command("observe-check")
-  .description("Log in and capture an accessibility-based page observation")
-  .option("--headed", "show the browser window while checking")
-  .action(async (options: { headed?: boolean }) => {
-    const config = loadConfig();
-    await runObserveCheck(config, options.headed ?? false);
-  });
-
-program
-  .command("action-check")
-  .description("Use generic surface actions to open a member profile")
-  .option("--member-id <memberId>", "five-digit member ID", "12345")
-  .option("--headed", "show the browser window while checking")
-  .action(async (options: { memberId: string; headed?: boolean }) => {
-    const config = loadConfig();
-    await runActionCheck(config, options.memberId, options.headed ?? false);
   });
 
 program
