@@ -98,4 +98,20 @@ describe("member balance artifact generator", () => {
 
     assert.throws(() => generateMemberBalanceArtifact(request, result), /infer.*memberId/);
   });
+
+  it("rejects unrelated literal fill values", () => {
+    const result = completedResult();
+    result.steps.splice(1, 0, {
+      ...result.steps[0]!,
+      stepNumber: 2,
+      action: {
+        type: "fill",
+        target: { strategy: "role", role: "textbox", name: "Notes" },
+        value: "do-not-persist-this",
+        reason: "Enter a literal note.",
+      },
+    });
+
+    assert.throws(() => generateMemberBalanceArtifact(request, result), /non-parameterized/);
+  });
 });

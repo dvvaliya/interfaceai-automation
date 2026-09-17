@@ -13,6 +13,7 @@ const policy: ActionPolicy = {
   allowedOrigins: ["http://localhost:3000"],
   allowedPathPrefixes: ["/login", "/members"],
   allowedActionTypes: ["fill", "click", "complete", "escalate"],
+  safeClickTargets: ["Search", "Clear"],
 };
 
 describe("action policy", () => {
@@ -132,6 +133,20 @@ describe("action policy", () => {
       effect: "require_approval",
       reason: "Accessing a restricted member record requires human approval.",
     });
+  });
+
+  it("requires approval for an unknown click target", () => {
+    const action = parseAgentAction({
+      type: "click",
+      target: { strategy: "role", role: "button", name: "Unknown Operation" },
+      reason: "Click an unclassified control.",
+    });
+
+    const decision = evaluateActionPolicy(policy, action, {
+      currentUrl: "http://localhost:3000/members",
+    });
+
+    assert.equal(decision.effect, "require_approval");
   });
 
   it("allows escalation even when the surface URL is untrusted", () => {

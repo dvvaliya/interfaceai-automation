@@ -8,6 +8,7 @@
     "discover": "tsx src/cli.ts discover",
     "health": "tsx src/cli.ts health",
     "replay": "tsx src/cli.ts replay",
+    "evidence:curate": "tsx src/observability/curate-evidence.ts",
     "test": "tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit && tsc -p tests/tsconfig.json",
     "build": "tsc"

@@ -14,6 +14,7 @@ const policy: ActionPolicy = {
   allowedOrigins: ["http://localhost:3000"],
   allowedPathPrefixes: ["/members"],
   allowedActionTypes: ["fill", "click", "complete", "escalate"],
+  safeClickTargets: ["Search"],
 };
 
 class FakeSurface implements ComputerSurface {
@@ -39,11 +40,29 @@ class FakeSurface implements ComputerSurface {
   async click(target: SurfaceTarget): Promise<void> {
     this.clickCalls.push(target);
   }
+
+  async isVisible(): Promise<boolean> {
+    return false;
+  }
+
+  async extractText(): Promise<string> {
+    throw new Error("extractText is not used by discovery tests");
+  }
+
+  async extractTableCell(): Promise<string> {
+    throw new Error("extractTableCell is not used by discovery tests");
+  }
+
+  async beginHumanControl(): Promise<void> {}
+
+  async endHumanControl(): Promise<[]> {
+    return [];
+  }
 }
 
 class NavigationTimeoutSurface extends FakeSurface {
-  override async click(): Promise<void> {
-    this.clickCalls += 1;
+  override async click(target: SurfaceTarget): Promise<void> {
+    this.clickCalls.push(target);
     throw new Error("Click timed out while waiting for navigation.");
   }
 }
@@ -132,6 +151,7 @@ describe("discovery agent loop", () => {
 
     assert.equal(result.status, "failed");
     assert.equal(surface.fillCalls.length, 2);
+    assert.equal(result.status === "failed" ? result.handoffEligible : false, true);
   });
 
   it("stops at the configured maximum step count", async () => {
@@ -149,6 +169,7 @@ describe("discovery agent loop", () => {
 
     assert.equal(result.status, "failed");
     assert.match(result.status === "failed" ? result.reason : "", /maximum of 1 steps/);
+    assert.equal(result.status === "failed" ? result.handoffEligible : false, true);
   });
 
   it("preserves action history and step numbering after a handoff", async () => {

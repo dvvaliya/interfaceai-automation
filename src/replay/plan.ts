@@ -8,16 +8,12 @@ export type ResolvedReplayStep =
   | Extract<ArtifactStep, { action: "click" }>;
 
 export function resolveReplaySteps(
-  artifact: CapabilityArtifact,
+  artifact: Pick<CapabilityArtifact, "steps">,
   inputs: ReplayInputs,
 ): ResolvedReplayStep[] {
   return artifact.steps.map((step) => {
     if (step.action === "click") {
       return step;
-    }
-
-    if (step.value.source === "literal") {
-      return { ...step, value: step.value.value };
     }
 
     const inputValue = inputs[step.value.name];

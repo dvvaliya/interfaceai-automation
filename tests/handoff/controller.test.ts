@@ -96,6 +96,28 @@ describe("handoff controller", () => {
     assert.equal(controller.snapshot().humanActions.length, 0);
   });
 
+  it("does not resume a protected action when its click caused no state change", () => {
+    const controller = createController();
+    controller.cedeToHuman();
+    controller.recordHumanAction({
+      type: "click",
+      capture: "exact",
+      role: "link",
+      name: "Continue and record access",
+      timestamp: "2026-09-10T00:00:01.000Z",
+    });
+
+    const result = controller.tryResume({
+      observation: before,
+      blockerVisible: false,
+      locationAllowed: true,
+      requireStateChange: true,
+    });
+
+    assert.equal(result.resumed, false);
+    assert.match(result.reason, /did not produce/);
+  });
+
   it("records a coarse navigation when the page changed but the DOM click event was lost", () => {
     const controller = createController();
     controller.cedeToHuman();

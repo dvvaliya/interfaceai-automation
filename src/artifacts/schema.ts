@@ -96,17 +96,7 @@ const inputValueSchema = z
   })
   .strict();
 
-const literalValueSchema = z
-  .object({
-    source: z.literal("literal"),
-    value: z.string().max(500),
-  })
-  .strict();
-
-export const stepValueSchema = z.discriminatedUnion("source", [
-  inputValueSchema,
-  literalValueSchema,
-]);
+export const stepValueSchema = inputValueSchema;
 
 const stepBase = {
   id: identifierSchema,

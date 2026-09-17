@@ -11,11 +11,11 @@ import { runAgentLoop, type AgentLoopResult } from "../discovery/agent-loop.js";
 import { parseDiscoveryRequest } from "../discovery/request.js";
 import { createLlmProvider } from "../llm/factory.js";
 import { RunEvidence } from "../observability/run-evidence.js";
+import { installBrowserRequestGuard } from "../policy/browser-request-guard.js";
 import {
   assertPolicyAllows,
   createActionPolicy,
   evaluateLocationPolicy,
-  evaluateOriginPolicy,
 } from "../policy/action-policy.js";
 import { PlaywrightSurface } from "../surface/playwright-surface.js";
 import { authenticateBankDemo } from "../targets/bank-demo/authenticate.js";
@@ -48,7 +48,7 @@ export async function runDiscover(
   }
 
   const policy = createActionPolicy(config);
-  assertPolicyAllows(evaluateOriginPolicy(policy, request.target));
+  assertPolicyAllows(evaluateLocationPolicy(policy, request.target));
 
   const handoffEnabled = !headless;
   const browser = await chromium.launch({ headless });
@@ -56,6 +56,14 @@ export async function runDiscover(
   try {
     let activeController: HandoffController | undefined;
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await installBrowserRequestGuard(
+      context,
+      {
+        allowedOrigins: policy.allowedOrigins,
+        allowedPathPrefixes: policy.allowedPathPrefixes,
+      },
+      (url) => runEvidence.record("browser_request_blocked", { url }),
+    );
     await installHumanActionCapture(context, () => activeController);
     const page = await context.newPage();
     const response = await page.goto(request.target, {
@@ -99,7 +107,7 @@ export async function runDiscover(
     let usedHandoff = false;
     let interventionCount = 0;
 
-    while (result.status === "escalated" && handoffEnabled) {
+    while (requiresHumanHandoff(result) && handoffEnabled) {
       usedHandoff = true;
       interventionCount += 1;
       if (interventionCount > 3) {
@@ -107,6 +115,7 @@ export async function runDiscover(
           status: "failed",
           reason: "Discovery exceeded the maximum number of human interventions.",
           failedStep: result.steps.length + 1,
+          handoffEligible: false,
           steps: result.steps,
         };
         break;
@@ -131,6 +140,13 @@ export async function runDiscover(
         blockerText,
         observation: beforeHandoff,
       });
+      const escalatedAction = result.steps.at(-1)?.action;
+      const expectedHumanAction =
+        escalatedAction?.type === "click"
+          ? { type: "click" as const, name: escalatedAction.target.name }
+          : blockerText
+            ? { type: "click" as const, name: "Continue and record access" }
+            : undefined;
       activeController = controller;
       const operatorDecision = await runOperatorHandoff({
         controller,
@@ -140,6 +156,7 @@ export async function runDiscover(
         cancelledText: blockerText
           ? "Record access was cancelled. No member information was displayed."
           : undefined,
+        expectedHumanAction,
         timeoutMs: config.HANDOFF_TIMEOUT_MS,
         maxResumeAttempts: config.HANDOFF_MAX_RESUME_ATTEMPTS,
         evidenceDirectory: path.join(runEvidence.directory, "handoff"),
@@ -154,6 +171,7 @@ export async function runDiscover(
               ? "Human intervention timed out."
               : "The human operator aborted discovery.",
           failedStep: result.steps.length + 1,
+          handoffEligible: false,
           steps: result.steps,
         };
         activeController = undefined;
@@ -161,6 +179,11 @@ export async function runDiscover(
       }
 
       const previousSteps = result.steps;
+      if (operatorDecision === "complete") {
+        runEvidence.record("human_requested_completion_validation", {
+          completedStepCount: previousSteps.length,
+        });
+      }
       const resumedResult = await runAgentLoop({
         goal: request.goal,
         provider,
@@ -186,8 +209,10 @@ export async function runDiscover(
     }
 
     let artifactPath: string | undefined;
-    if (result.status === "completed" && !usedHandoff) {
+    if (result.status === "completed") {
       runEvidence.addRedactionValues(Object.values(result.outputs));
+    }
+    if (result.status === "completed" && !usedHandoff) {
       const artifact = generateMemberBalanceArtifact(request, result);
       artifactPath = await saveCapabilityArtifact(artifact);
       await saveExampleArtifact(artifact);
@@ -227,6 +252,7 @@ export async function runDiscover(
     if (result.status === "failed") {
       throw new Error(`Discovery failed at step ${result.failedStep}: ${result.reason}`);
     }
+    if (result.status === "escalated" && !handoffEnabled) process.exitCode = 2;
 
     return result;
   } catch (error) {
@@ -238,4 +264,13 @@ export async function runDiscover(
     await runEvidence.flush();
     await browser.close();
   }
+}
+
+type HandoffEligibleResult =
+  | Extract<AgentLoopResult, { status: "escalated" }>
+  | Extract<AgentLoopResult, { status: "failed" }>;
+
+function requiresHumanHandoff(result: AgentLoopResult): result is HandoffEligibleResult {
+  return result.status === "escalated" ||
+    (result.status === "failed" && result.handoffEligible === true);
 }

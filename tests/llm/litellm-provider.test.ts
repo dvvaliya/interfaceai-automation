@@ -24,17 +24,22 @@ describe("LiteLLM provider", () => {
       value: "12345",
       reason: "Enter the requested member.",
     };
-    const fakeFetch: typeof fetch = async () =>
-      new Response(
+    let requestBody = "";
+    const fakeFetch: typeof fetch = async (_input, init) => {
+      requestBody = String(init?.body ?? "");
+      return new Response(
         JSON.stringify({ choices: [{ message: { content: JSON.stringify(expectedAction) } }] }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
+    };
     const provider = new LiteLlmProvider(
       { baseUrl: "https://llm.example/v1/chat/completions", apiKey: "test-key", model: "test" },
       fakeFetch,
     );
 
     assert.deepEqual(await provider.decideNextAction(request), expectedAction);
+    assert.equal(requestBody.includes("12345"), false);
+    assert.match(requestBody, /<SENSITIVE_1>/);
   });
 
   it("reports a failed HTTP response", async () => {

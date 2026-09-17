@@ -13,6 +13,7 @@ export async function runOperatorHandoff(options: {
   policy: ActionPolicy;
   blockerText?: string;
   cancelledText?: string;
+  expectedHumanAction?: { type: "click"; name: string };
   timeoutMs: number;
   maxResumeAttempts: number;
   evidenceDirectory?: string;
@@ -63,6 +64,24 @@ export async function runOperatorHandoff(options: {
         continue;
       }
 
+      if (
+        options.expectedHumanAction &&
+        !options.controller
+          .snapshot()
+          .humanActions.some(
+            (action) =>
+              action.capture === "exact" &&
+              action.type === options.expectedHumanAction?.type &&
+              action.name === options.expectedHumanAction.name,
+          )
+      ) {
+        console.log(
+          `Cannot resume: expected human action '${options.expectedHumanAction.name}' was not recorded.`,
+        );
+        await options.surface.beginHumanControl();
+        continue;
+      }
+
       const observation = await options.surface.observe(`handoff-after-${attempt}`);
       const cancelled = options.cancelledText
         ? await options.surface.isVisible(
@@ -93,6 +112,7 @@ export async function runOperatorHandoff(options: {
         observation,
         blockerVisible,
         locationAllowed,
+        requireStateChange: options.expectedHumanAction !== undefined,
       });
       await saveIntervention(
         options.controller.snapshot(),

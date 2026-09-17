@@ -11,10 +11,17 @@ import type {
 import { humanActionBufferScript } from "./human-action-buffer.js";
 
 export class PlaywrightSurface implements ComputerSurface {
+  private pendingDialog: { type: string; message: string } | undefined;
+
   constructor(
     private readonly page: Page,
     private readonly evidenceDirectory: string,
-  ) {}
+  ) {
+    this.page.on("dialog", async (dialog) => {
+      this.pendingDialog = { type: dialog.type(), message: dialog.message() };
+      await dialog.dismiss();
+    });
+  }
 
   async observe(evidenceName: string): Promise<SurfaceObservation> {
     if (!/^[a-z0-9][a-z0-9-_]*$/i.test(evidenceName)) {
@@ -40,11 +47,15 @@ export class PlaywrightSurface implements ComputerSurface {
   }
 
   async fill(target: SurfaceTarget, value: string): Promise<void> {
+    this.pendingDialog = undefined;
     await this.resolveTarget(target).fill(value, { timeout: 5_000 });
+    this.throwIfUnexpectedDialog();
   }
 
   async click(target: SurfaceTarget): Promise<void> {
+    this.pendingDialog = undefined;
     await this.resolveTarget(target).click({ timeout: 30_000 });
+    this.throwIfUnexpectedDialog();
   }
 
   async isVisible(target: SurfaceTarget, timeoutMs = 500): Promise<boolean> {
@@ -134,5 +145,14 @@ export class PlaywrightSurface implements ComputerSurface {
       case "text":
         return this.page.getByText(target.text, { exact: target.exact ?? true });
     }
+  }
+
+  private throwIfUnexpectedDialog(): void {
+    if (!this.pendingDialog) return;
+    const dialog = this.pendingDialog;
+    this.pendingDialog = undefined;
+    throw new Error(
+      `Unexpected browser ${dialog.type} dialog was dismissed safely: ${dialog.message}`,
+    );
   }
 }

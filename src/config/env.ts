@@ -22,12 +22,14 @@ const allowedActionsSchema = commaSeparatedValues.pipe(
     .min(1),
 );
 
+const safeClickTargetsSchema = commaSeparatedValues.pipe(z.array(z.string().min(1)).min(1));
+
 const configSchema = z.object({
   BANK_APP_URL: z.url().default("http://localhost:3000"),
   BANK_OPERATOR_ID: z.string().min(1).optional(),
   BANK_OPERATOR_PASSWORD: z.string().min(1).optional(),
   ALLOWED_ORIGINS: allowedOriginsSchema.default(["http://localhost:3000"]),
-  ALLOWED_PATH_PREFIXES: allowedPathPrefixesSchema.default(["/login", "/members"]),
+  ALLOWED_PATH_PREFIXES: allowedPathPrefixesSchema.default(["/", "/login", "/members"]),
   ALLOWED_ACTIONS: allowedActionsSchema.default([
     "fill",
     "click",
@@ -35,6 +37,15 @@ const configSchema = z.object({
     "escalate",
     "business_outcome",
     "fail",
+  ]),
+  SAFE_CLICK_TARGETS: safeClickTargetsSchema.default([
+    "Search",
+    "Clear",
+    "New Member Search",
+    "Member Inquiry",
+    "Return to Member Inquiry",
+    "Back",
+    "Cancel",
   ]),
   LLM_PROVIDER: z.literal("litellm").default("litellm"),
   LITELLM_BASE_URL: z.url().optional(),

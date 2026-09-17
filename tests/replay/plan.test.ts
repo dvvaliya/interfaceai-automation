@@ -14,7 +14,7 @@ const target = {
   rationale: "Stable member-number label.",
 };
 
-const artifact = {
+const artifact: Pick<CapabilityArtifact, "steps"> = {
   steps: [
     {
       id: "enter_member_id",
@@ -25,7 +25,7 @@ const artifact = {
       value: { source: "input", name: "memberId" },
     },
   ],
-} as CapabilityArtifact;
+};
 
 describe("replay plan", () => {
   it("resolves an input reference without changing the artifact", () => {

@@ -14,6 +14,7 @@ export type ActionPolicy = {
   allowedOrigins: readonly string[];
   allowedPathPrefixes: readonly string[];
   allowedActionTypes: readonly AgentAction["type"][];
+  safeClickTargets: readonly string[];
 };
 
 const sensitiveTargetName = /(password|passcode|pin|token|secret|social security|ssn)/i;
@@ -28,6 +29,7 @@ export function createActionPolicy(config: AppConfig): ActionPolicy {
     allowedOrigins: config.ALLOWED_ORIGINS,
     allowedPathPrefixes: config.ALLOWED_PATH_PREFIXES,
     allowedActionTypes: config.ALLOWED_ACTIONS,
+    safeClickTargets: config.SAFE_CLICK_TARGETS,
   };
 }
 
@@ -62,6 +64,18 @@ export function evaluateActionPolicy(
     return {
       effect: "require_approval",
       reason: riskyReason,
+    };
+  }
+
+  if (
+    action.type === "click" &&
+    !policy.safeClickTargets.some(
+      (target) => target.toLowerCase() === action.target.name.toLowerCase(),
+    )
+  ) {
+    return {
+      effect: "require_approval",
+      reason: `Click target '${action.target.name}' is not explicitly classified as safe.`,
     };
   }
 
@@ -130,7 +144,7 @@ export class ApprovalRequiredError extends Error {
 
 function pathMatches(pathname: string, allowedPrefix: string): boolean {
   if (allowedPrefix === "/") {
-    return true;
+    return pathname === "/";
   }
 
   return pathname === allowedPrefix || pathname.startsWith(`${allowedPrefix}/`);

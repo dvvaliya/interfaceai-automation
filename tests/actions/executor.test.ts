@@ -23,6 +23,24 @@ class FakeSurface implements ComputerSurface {
   async click(target: SurfaceTarget): Promise<void> {
     this.clickCalls.push(target);
   }
+
+  async isVisible(): Promise<boolean> {
+    return false;
+  }
+
+  async extractText(): Promise<string> {
+    throw new Error("extractText is not used by action executor tests");
+  }
+
+  async extractTableCell(): Promise<string> {
+    throw new Error("extractTableCell is not used by action executor tests");
+  }
+
+  async beginHumanControl(): Promise<void> {}
+
+  async endHumanControl(): Promise<[]> {
+    return [];
+  }
 }
 
 describe("action executor", () => {

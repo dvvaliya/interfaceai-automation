@@ -12,6 +12,10 @@ export async function authenticateBankDemo(
   // The form is server-rendered, so wait until its client-side submit handler is attached.
   await page.waitForLoadState("networkidle", { timeout: 10_000 });
 
+  if (await page.getByRole("heading", { name: "Member Inquiry" }).isVisible()) {
+    return;
+  }
+
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     await page.getByLabel("Operator ID").fill(credentials.operatorId);
     await page.getByLabel("Password").fill(credentials.password);

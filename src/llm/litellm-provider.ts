@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { LlmDecisionRequest, LlmProvider } from "./provider.js";
+import { SensitiveTokenizer } from "./sensitive-tokenizer.js";
 
 type LiteLlmProviderOptions = {
   baseUrl: string;
@@ -50,6 +51,19 @@ export class LiteLlmProvider implements LlmProvider {
   }
 
   async decideNextAction(request: LlmDecisionRequest): Promise<unknown> {
+    const tokenizer = new SensitiveTokenizer([
+      request.goal,
+      request.observation.url,
+      request.observation.accessibilitySnapshot,
+      request.actionHistory,
+    ]);
+    const tokenizedRequest = tokenizer.tokenize({
+      goal: request.goal,
+      stepNumber: request.stepNumber,
+      currentUrl: request.observation.url,
+      accessibilitySnapshot: request.observation.accessibilitySnapshot,
+      actionHistory: request.actionHistory,
+    });
     const response = await this.fetchImpl(this.options.baseUrl, {
       method: "POST",
       headers: {
@@ -62,13 +76,7 @@ export class LiteLlmProvider implements LlmProvider {
           { role: "system", content: systemPrompt },
           {
             role: "user",
-            content: JSON.stringify({
-              goal: request.goal,
-              stepNumber: request.stepNumber,
-              currentUrl: request.observation.url,
-              accessibilitySnapshot: request.observation.accessibilitySnapshot,
-              actionHistory: request.actionHistory,
-            }),
+            content: JSON.stringify(tokenizedRequest),
           },
         ],
         temperature: 0,
@@ -89,7 +97,7 @@ export class LiteLlmProvider implements LlmProvider {
     if (!content) {
       throw new Error("LiteLLM returned an empty message.");
     }
-    return parseJsonContent(content);
+    return tokenizer.detokenize(parseJsonContent(content));
   }
 }
 

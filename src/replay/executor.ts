@@ -1,5 +1,7 @@
 import type { CapabilityArtifact } from "../artifacts/schema.js";
+import type { AgentAction } from "../actions/schema.js";
 import {
+  evaluateActionPolicy,
   evaluateLocationPolicy,
   type ActionPolicy,
 } from "../policy/action-policy.js";
@@ -10,23 +12,50 @@ type LocatorPlan = CapabilityArtifact["steps"][number]["target"];
 
 export type ReplayStepRecord = {
   stepId: string;
+  description: string;
   action: "fill" | "click";
+  risk: "safe" | "reversible" | "risky";
   status: "success";
   locatorStrategy: SurfaceTarget["strategy"];
+  durationMs: number;
+  expected: string;
+  observed: string;
   evidence: SurfaceObservation;
+};
+
+export type ReplayExecutionEvent = {
+  type:
+    | "replay_step_started"
+    | "replay_policy_evaluated"
+    | "replay_step_completed"
+    | "replay_outcome_detected"
+    | "replay_checkpoint_evaluated"
+    | "replay_outputs_extracted";
+  data: Record<string, unknown>;
 };
 
 export type ReplayResult =
   | { status: "success"; outputs: Record<string, string | number | boolean>; steps: ReplayStepRecord[] }
-  | { status: "business_outcome"; code: string; message: string; stepId: string; steps: ReplayStepRecord[] }
+  | {
+      status: "business_outcome";
+      code: string;
+      message: string;
+      stepId: string;
+      evidence: SurfaceObservation;
+      steps: ReplayStepRecord[];
+    }
   | {
       status: "intervention_required";
       reason: string;
       stepId: string;
       blockerText?: string;
       cancelledText?: string;
+      expectedHumanAction?: { type: "click"; name: string };
       resumeAtStepIndex: number;
       evidence: SurfaceObservation;
+      expected?: string;
+      observed?: string;
+      attemptedLocators?: SurfaceTarget[];
       steps: ReplayStepRecord[];
     }
   | {
@@ -36,6 +65,9 @@ export type ReplayResult =
       message: string;
       stepId?: string;
       evidence?: SurfaceObservation;
+      expected?: string;
+      observed?: string;
+      attemptedLocators?: SurfaceTarget[];
       steps: ReplayStepRecord[];
     };
 
@@ -46,9 +78,12 @@ export async function executeReplay(options: {
   policy: ActionPolicy;
   startStepIndex?: number;
   previousSteps?: ReplayStepRecord[];
+  onEvent?: (event: ReplayExecutionEvent) => void;
+  evidencePrefix?: string;
 }): Promise<ReplayResult> {
   const records: ReplayStepRecord[] = [...(options.previousSteps ?? [])];
   const startStepIndex = options.startStepIndex ?? 0;
+  const evidencePrefix = options.evidencePrefix ?? "replay";
   let currentStepId: string | undefined;
   let currentStepIndex = startStepIndex;
 
@@ -57,28 +92,68 @@ export async function executeReplay(options: {
       const step = options.steps[index]!;
       currentStepId = step.id;
       currentStepIndex = index;
+      const stepStartedAt = Date.now();
+      const expected = `${step.action} '${targetNameFromPlan(step.target)}'`;
+      options.onEvent?.({
+        type: "replay_step_started",
+        data: {
+          stepId: step.id,
+          description: step.description,
+          action: step.action,
+          risk: step.risk,
+          expected,
+        },
+      });
 
-      const beforeEvidence = await options.surface.observe(`replay-step-${index}-before`);
+      const beforeEvidence = await options.surface.observe(
+        `${evidencePrefix}-step-${index}-before`,
+      );
+      const artifactLocationError = validateArtifactLocation(options.artifact, beforeEvidence.url);
+      if (artifactLocationError) {
+        return failure("hard", "ARTIFACT_ORIGIN_BLOCKED", artifactLocationError, records, step.id, {
+          evidence: beforeEvidence,
+          expected,
+          observed: beforeEvidence.url,
+          attemptedLocators: locatorCandidates(step.target),
+        });
+      }
       const locationDecision = evaluateLocationPolicy(options.policy, beforeEvidence.url);
       if (locationDecision.effect !== "allow") {
-        return failure("hard", "POLICY_BLOCKED", locationDecision.reason, records, step.id);
+        return failure("hard", "POLICY_BLOCKED", locationDecision.reason, records, step.id, {
+          evidence: beforeEvidence,
+          expected,
+          observed: beforeEvidence.url,
+          attemptedLocators: locatorCandidates(step.target),
+        });
       }
 
-      if (!options.policy.allowedActionTypes.includes(step.action)) {
-        return failure(
-          "hard",
-          "ACTION_NOT_ALLOWED",
-          `Action '${step.action}' is not allowlisted.`,
-          records,
-          step.id,
-        );
+      const semanticAction = replayStepToPolicyAction(step);
+      const actionDecision = evaluateActionPolicy(options.policy, semanticAction, {
+        currentUrl: beforeEvidence.url,
+      });
+      options.onEvent?.({
+        type: "replay_policy_evaluated",
+        data: { stepId: step.id, ...actionDecision },
+      });
+      if (actionDecision.effect === "block") {
+        return failure("hard", "ACTION_NOT_ALLOWED", actionDecision.reason, records, step.id, {
+          evidence: beforeEvidence,
+          expected,
+          observed: actionDecision.reason,
+          attemptedLocators: locatorCandidates(step.target),
+        });
       }
 
-      if (step.risk === "risky") {
+      if (step.risk === "risky" || actionDecision.effect === "require_approval") {
+        const targetName = targetNameFromPlan(step.target);
         return {
           status: "intervention_required",
-          reason: `Step '${step.id}' is marked risky and requires human approval.`,
+          reason:
+            actionDecision.effect === "require_approval"
+              ? actionDecision.reason
+              : `Step '${step.id}' is marked risky and requires human approval.`,
           stepId: step.id,
+          expectedHumanAction: { type: "click", name: targetName },
           resumeAtStepIndex: index + 1,
           evidence: beforeEvidence,
           steps: records,
@@ -86,13 +161,46 @@ export async function executeReplay(options: {
       }
 
       const locator = await executeStepWithFallback(options.surface, step);
-      const evidence = await options.surface.observe(`replay-step-${index + 1}-after`);
+      const evidence = await options.surface.observe(
+        `${evidencePrefix}-step-${index + 1}-after`,
+      );
+      const postActionArtifactError = validateArtifactLocation(options.artifact, evidence.url);
+      if (postActionArtifactError) {
+        return failure(
+          "hard",
+          "ARTIFACT_ORIGIN_BLOCKED",
+          postActionArtifactError,
+          records,
+          step.id,
+          {
+            evidence,
+            expected,
+            observed: evidence.url,
+            attemptedLocators: locatorCandidates(step.target),
+          },
+        );
+      }
       records.push({
         stepId: step.id,
+        description: step.description,
         action: step.action,
+        risk: step.risk,
         status: "success",
         locatorStrategy: locator.strategy,
+        durationMs: Date.now() - stepStartedAt,
+        expected,
+        observed: evidence.url,
         evidence,
+      });
+      options.onEvent?.({
+        type: "replay_step_completed",
+        data: {
+          stepId: step.id,
+          locatorStrategy: locator.strategy,
+          durationMs: Date.now() - stepStartedAt,
+          observedUrl: evidence.url,
+          screenshotPath: evidence.screenshotPath,
+        },
       });
 
       const knownOutcome = await detectKnownOutcome(
@@ -104,16 +212,45 @@ export async function executeReplay(options: {
         records,
       );
       if (knownOutcome) {
+        options.onEvent?.({
+          type: "replay_outcome_detected",
+          data: {
+            stepId: step.id,
+            status: knownOutcome.status,
+            code: "code" in knownOutcome ? knownOutcome.code : undefined,
+          },
+        });
         return knownOutcome;
       }
     }
 
-    const finalObservation = await options.surface.observe("replay-final");
+    const finalObservation = await options.surface.observe(`${evidencePrefix}-final`);
+    const finalArtifactError = validateArtifactLocation(options.artifact, finalObservation.url);
+    if (finalArtifactError) {
+      return {
+        status: "failure",
+        category: "hard",
+        code: "ARTIFACT_ORIGIN_BLOCKED",
+        message: finalArtifactError,
+        stepId: currentStepId,
+        evidence: finalObservation,
+        steps: records,
+      };
+    }
     const checkpointPassed = await verifyCheckpoint(
       options.artifact.checkpoint,
       options.surface,
       finalObservation,
     );
+    options.onEvent?.({
+      type: "replay_checkpoint_evaluated",
+      data: {
+        passed: checkpointPassed,
+        checkpoint: options.artifact.checkpoint,
+        observedUrl: finalObservation.url,
+        screenshotPath: finalObservation.screenshotPath,
+      },
+    });
     if (!checkpointPassed) {
       return {
         status: "intervention_required",
@@ -126,11 +263,15 @@ export async function executeReplay(options: {
     }
 
     const outputs = await extractOutputs(options.artifact, options.surface);
+    options.onEvent?.({
+      type: "replay_outputs_extracted",
+      data: { outputNames: Object.keys(outputs) },
+    });
     return { status: "success", outputs, steps: records };
   } catch (error) {
     let evidence: SurfaceObservation | undefined;
     try {
-      evidence = await options.surface.observe("replay-failure");
+      evidence = await options.surface.observe(`${evidencePrefix}-failure`);
     } catch {
       // Preserve the original failure if evidence capture also fails.
     }
@@ -142,6 +283,12 @@ export async function executeReplay(options: {
         stepId: currentStepId,
         resumeAtStepIndex: currentStepIndex,
         evidence,
+        expected: currentStepId ? `Complete replay step '${currentStepId}'.` : undefined,
+        observed: `${evidence.url}: ${evidence.accessibilitySnapshot.slice(0, 500)}`,
+        attemptedLocators:
+          currentStepIndex < options.steps.length
+            ? locatorCandidates(options.steps[currentStepIndex]!.target)
+            : undefined,
         steps: records,
       };
     }
@@ -201,6 +348,7 @@ async function detectKnownOutcome(
         code: outcome.code,
         message: outcome.description,
         stepId,
+        evidence,
         steps,
       };
     }
@@ -215,6 +363,10 @@ async function detectKnownOutcome(
           outcome.code === "RESTRICTED_RECORD_REVIEW"
             ? "Record access was cancelled. No member information was displayed."
             : undefined,
+        expectedHumanAction:
+          outcome.code === "RESTRICTED_RECORD_REVIEW"
+            ? { type: "click", name: "Continue and record access" }
+            : undefined,
         resumeAtStepIndex,
         evidence,
         steps,
@@ -227,6 +379,9 @@ async function detectKnownOutcome(
       code: outcome.code,
       message: outcome.description,
       stepId,
+      evidence,
+      expected: "Continue without a declared failure outcome.",
+      observed: outcome.whenTextVisible,
       steps,
     };
   }
@@ -300,6 +455,48 @@ function locatorCandidates(plan: LocatorPlan): SurfaceTarget[] {
   return [plan.primary, ...plan.fallbacks];
 }
 
+function replayStepToPolicyAction(step: ResolvedReplayStep): AgentAction {
+  const name = targetNameFromPlan(step.target);
+  if (step.action === "fill") {
+    return {
+      type: "fill",
+      target: { strategy: "role", role: "textbox", name },
+      value: step.value,
+      reason: step.description,
+    };
+  }
+
+  return {
+    type: "click",
+    target: { strategy: "role", role: "button", name },
+    reason: step.description,
+  };
+}
+
+function targetNameFromPlan(plan: LocatorPlan): string {
+  const primary = plan.primary;
+  if (primary.strategy === "role") return primary.name;
+  if (primary.strategy === "label") return primary.label;
+  return primary.text;
+}
+
+function validateArtifactLocation(
+  artifact: CapabilityArtifact,
+  rawUrl: string,
+): string | undefined {
+  let origin: string;
+  try {
+    origin = new URL(rawUrl).origin;
+  } catch {
+    return `Replay reached an invalid URL '${rawUrl}'.`;
+  }
+
+  if (!artifact.surface.allowedOrigins.includes(origin)) {
+    return `Origin '${origin}' is not authorized by capability '${artifact.id}'.`;
+  }
+  return undefined;
+}
+
 function convertOutput(
   name: string,
   type: "string" | "number" | "boolean",
@@ -322,6 +519,12 @@ function failure(
   message: string,
   steps: ReplayStepRecord[],
   stepId?: string,
+  diagnostics: {
+    evidence?: SurfaceObservation;
+    expected?: string;
+    observed?: string;
+    attemptedLocators?: SurfaceTarget[];
+  } = {},
 ): ReplayResult {
-  return { status: "failure", category, code, message, stepId, steps };
+  return { status: "failure", category, code, message, stepId, ...diagnostics, steps };
 }

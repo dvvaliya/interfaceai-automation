@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import type { AppConfig } from "../config/env.js";
+import { redactData } from "../observability/redact.js";
 import { RunEvidence } from "../observability/run-evidence.js";
 import { PlaywrightSurface } from "../surface/playwright-surface.js";
 import { authenticateBankDemo } from "../targets/bank-demo/authenticate.js";
@@ -43,7 +44,7 @@ export async function runObserveCheck(config: AppConfig, headed: boolean): Promi
     const observationPath = await runEvidence.writeJson("observation.json", observation);
 
     console.log("Page observation:");
-    console.log(observation.accessibilitySnapshot);
+    console.log(redactData(observation.accessibilitySnapshot));
     console.log(`Observation JSON: ${observationPath}`);
     console.log(`Screenshot: ${observation.screenshotPath}`);
     console.log("Observe check passed.");

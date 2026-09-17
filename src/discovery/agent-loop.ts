@@ -44,6 +44,7 @@ export type AgentLoopResult =
       failedStep: number;
       category?: "recoverable" | "hard";
       code?: string;
+      handoffEligible?: boolean;
     });
 
 export type AgentLoopOptions = {
@@ -85,6 +86,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         status: "failed",
         reason: `Discovery exceeded the ${options.timeoutMs}ms timeout.`,
         failedStep: stepNumber,
+        handoffEligible: true,
         steps,
       };
     }
@@ -96,6 +98,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           status: "failed",
           reason: locationDecision.reason,
           failedStep: stepNumber,
+          handoffEligible: false,
           steps,
         };
       }
@@ -131,6 +134,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           status: "failed",
           reason: `The model repeated the same action more than ${maxRepeatedActions} times.`,
           failedStep: stepNumber,
+          handoffEligible: true,
           steps,
         };
       }
@@ -154,6 +158,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           status: "failed",
           reason: policyDecision.reason,
           failedStep: stepNumber,
+          handoffEligible: false,
           steps,
         };
       }
@@ -227,6 +232,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           code: executionOutcome.code,
           reason: executionOutcome.message,
           failedStep: stepNumber,
+          handoffEligible: false,
           steps,
         };
       }
@@ -242,6 +248,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     status: "failed",
     reason: `Discovery reached the maximum of ${options.maxSteps} steps.`,
     failedStep: stepNumberOffset + options.maxSteps,
+    handoffEligible: true,
     steps,
   };
 }
@@ -262,6 +269,7 @@ function failedResult(
     status: "failed",
     reason: error instanceof Error ? error.message : "Unknown discovery error.",
     failedStep,
+    handoffEligible: true,
     steps,
   };
 }

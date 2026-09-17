@@ -52,6 +52,7 @@ export class HandoffController {
     observation: SurfaceObservation;
     blockerVisible: boolean;
     locationAllowed: boolean;
+    requireStateChange?: boolean;
   }): { resumed: boolean; reason: string } {
     if (this.request.controlOwner !== "HUMAN") {
       return { resumed: false, reason: "Control is not currently assigned to the human." };
@@ -71,6 +72,12 @@ export class HandoffController {
     }
 
     const unchanged = fingerprint(input.observation) === this.baselineFingerprint;
+    if (input.requireStateChange && unchanged) {
+      return {
+        resumed: false,
+        reason: "The expected human action did not produce a verifiable page-state change.",
+      };
+    }
     if (unchanged && this.request.humanActions.length === 0) {
       return { resumed: false, reason: "The page is unchanged and no human action was recorded." };
     }

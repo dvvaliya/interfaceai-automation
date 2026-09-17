@@ -35,6 +35,11 @@ export function generateMemberBalanceArtifact(
   const steps: CapabilityArtifact["steps"] = [];
   for (const step of result.steps) {
     if (step.action.type === "fill") {
+      if (step.action.value !== discoveredMemberId) {
+        throw new Error(
+          `Artifact generation refused a non-parameterized fill value at discovery step ${step.stepNumber}.`,
+        );
+      }
       const description = parameterizeText(step.action.reason, discoveredMemberId);
       steps.push({
         id: `step_${step.stepNumber}_fill`,
@@ -42,10 +47,7 @@ export function generateMemberBalanceArtifact(
         action: "fill",
         risk: "safe",
         target: locatorPlan(step.action.target, description),
-        value:
-          step.action.value === discoveredMemberId
-            ? { source: "input", name: "memberId" }
-            : { source: "literal", value: step.action.value },
+        value: { source: "input", name: "memberId" },
       });
     }
 
@@ -55,7 +57,8 @@ export function generateMemberBalanceArtifact(
         id: `step_${step.stepNumber}_click`,
         description,
         action: "click",
-        risk: "safe",
+        risk:
+          step.action.target.name.toLowerCase() === "search" ? "safe" : "risky",
         target: locatorPlan(step.action.target, description),
       });
     }

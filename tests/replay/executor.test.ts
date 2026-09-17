@@ -29,7 +29,15 @@ const artifact = {
     entryUrl: "http://localhost:3000",
     allowedOrigins: ["http://localhost:3000"],
   },
-  inputs: {},
+  inputs: {
+    memberId: {
+      type: "string",
+      description: "Member identifier.",
+      required: true,
+      sensitive: true,
+      pattern: "^[0-9]{5}$",
+    },
+  },
   steps: [
     {
       id: "fill_member",
@@ -37,7 +45,7 @@ const artifact = {
       risk: "safe",
       action: "fill",
       target: roleTarget("textbox", "Member Number"),
-      value: { source: "literal", value: "24680" },
+      value: { source: "input", name: "memberId" },
     },
     {
       id: "search_member",
@@ -75,6 +83,7 @@ const policy: ActionPolicy = {
   allowedOrigins: ["http://localhost:3000"],
   allowedPathPrefixes: ["/members"],
   allowedActionTypes: ["fill", "click"],
+  safeClickTargets: ["Search"],
 };
 
 class FakeReplaySurface implements ComputerSurface {
@@ -113,12 +122,18 @@ class FakeReplaySurface implements ComputerSurface {
   async extractTableCell(): Promise<string> {
     return "$8,102.30";
   }
+
+  async beginHumanControl(): Promise<void> {}
+
+  async endHumanControl(): Promise<[]> {
+    return [];
+  }
 }
 
 describe("deterministic replay executor", () => {
   it("executes saved steps, verifies the checkpoint, and extracts outputs", async () => {
     const surface = new FakeReplaySurface();
-    const steps = resolveReplaySteps(artifact, {});
+    const steps = resolveReplaySteps(artifact, { memberId: "24680" });
 
     const result = await executeReplay({ artifact, steps, surface, policy });
 
@@ -132,7 +147,7 @@ describe("deterministic replay executor", () => {
 
   it("returns a known business outcome instead of a failure", async () => {
     const surface = new FakeReplaySurface("No Member Found");
-    const steps = resolveReplaySteps(artifact, {});
+    const steps = resolveReplaySteps(artifact, { memberId: "99999" });
 
     const result = await executeReplay({ artifact, steps, surface, policy });
 
@@ -153,7 +168,7 @@ describe("deterministic replay executor", () => {
       ],
     } as CapabilityArtifact;
     const surface = new FakeReplaySurface("Restricted Record Warning");
-    const steps = resolveReplaySteps(interventionArtifact, {});
+    const steps = resolveReplaySteps(interventionArtifact, { memberId: "33333" });
 
     const result = await executeReplay({ artifact: interventionArtifact, steps, surface, policy });
 
@@ -161,6 +176,50 @@ describe("deterministic replay executor", () => {
     if (result.status === "intervention_required") {
       assert.equal(result.blockerText, "Restricted Record Warning");
       assert.equal(result.resumeAtStepIndex, 1);
+      assert.deepEqual(result.expectedHumanAction, {
+        type: "click",
+        name: "Continue and record access",
+      });
     }
+  });
+
+  it("requires approval when a safe-labelled artifact targets a known risky control", async () => {
+    const riskyArtifact = {
+      ...artifact,
+      steps: [
+        {
+          ...artifact.steps[1],
+          id: "create_account",
+          risk: "safe",
+          target: roleTarget("button", "Create Sub-Account"),
+        },
+      ],
+    } as CapabilityArtifact;
+    const surface = new FakeReplaySurface();
+    const steps = resolveReplaySteps(riskyArtifact, { memberId: "12345" });
+
+    const result = await executeReplay({ artifact: riskyArtifact, steps, surface, policy });
+
+    assert.equal(result.status, "intervention_required");
+    assert.equal(surface.clickCalls, 0);
+  });
+
+  it("stops if the page leaves the artifact's own origin allowlist", async () => {
+    const restrictedArtifact = {
+      ...artifact,
+      surface: { ...artifact.surface, allowedOrigins: ["https://different.example"] },
+    } as CapabilityArtifact;
+    const surface = new FakeReplaySurface();
+    const steps = resolveReplaySteps(restrictedArtifact, { memberId: "24680" });
+
+    const result = await executeReplay({
+      artifact: restrictedArtifact,
+      steps,
+      surface,
+      policy,
+    });
+
+    assert.equal(result.status, "failure");
+    assert.equal(result.status === "failure" ? result.code : "", "ARTIFACT_ORIGIN_BLOCKED");
   });
 });

@@ -7,6 +7,7 @@ export function runHealthCheck(config: AppConfig): void {
     allowedOrigins: config.ALLOWED_ORIGINS.join(", "),
     allowedPaths: config.ALLOWED_PATH_PREFIXES.join(", "),
     allowedActions: config.ALLOWED_ACTIONS.join(", "),
+    safeClickTargets: config.SAFE_CLICK_TARGETS.join(", "),
     llmProvider: config.LLM_PROVIDER,
     llmBaseUrl: config.LITELLM_BASE_URL || "not configured",
     llmModel: config.LITELLM_MODEL || "not configured",

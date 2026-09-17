@@ -126,4 +126,13 @@ describe("capability artifact schema", () => {
 
     assert.throws(() => parseCapabilityArtifact(artifact));
   });
+
+  it("rejects literal fill values so invocation data must be parameterized", () => {
+    const artifact = validBalanceArtifact() as {
+      steps: Array<{ value?: unknown }>;
+    };
+    artifact.steps[0]!.value = { source: "literal", value: "sensitive-value" };
+
+    assert.throws(() => parseCapabilityArtifact(artifact));
+  });
 });

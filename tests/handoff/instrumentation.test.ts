@@ -17,6 +17,12 @@ describe("human action instrumentation", () => {
   let evidenceDirectory: string;
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", "text/html");
+    if (request.url === "/dialog") {
+      response.end(
+        '<!doctype html><html><body><button onclick="confirm(\'Proceed?\')">Dangerous action</button></body></html>',
+      );
+      return;
+    }
     if (request.url === "/next") {
       response.end("<!doctype html><html><body><h1>Member Profile</h1></body></html>");
       return;
@@ -99,6 +105,22 @@ describe("human action instrumentation", () => {
     assert.deepEqual(
       actions.map((action) => action.sequence),
       actions.map((_, index) => index + 1),
+    );
+  });
+
+  it("captures and safely dismisses an unexpected native dialog", async () => {
+    const page = await context.newPage();
+    await page.goto(`${baseUrl}/dialog`);
+    const surface = new PlaywrightSurface(page, evidenceDirectory);
+
+    await assert.rejects(
+      () =>
+        surface.click({
+          strategy: "role",
+          role: "button",
+          name: "Dangerous action",
+        }),
+      /Unexpected browser confirm dialog was dismissed safely: Proceed\?/,
     );
   });
 });

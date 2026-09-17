@@ -24,6 +24,11 @@ describe("run evidence", () => {
       await run.writeJson("result.json", {
         memberName: "Alex Morgan",
         summary: "Alex Morgan has a balance of $2,450.75",
+        modelSummary: "Member 12345 (Casey Bennett) has balance $5,727.91",
+        observation: {
+          accessibilitySnapshot:
+            '- row "Member Number 12345"\n- row "Member Name Alex Morgan"\n- cell "Alex Morgan"\n- cell "$2,450.75"\n- cell "SAV-****-4412"',
+        },
       });
       await run.flush();
 
@@ -35,6 +40,11 @@ describe("run evidence", () => {
       assert.equal(log.includes("test-secret-value"), false);
       assert.equal(result.includes("Alex Morgan"), false);
       assert.equal(result.includes("$2,450.75"), false);
+      assert.equal(result.includes("Casey Bennett"), false);
+      assert.equal(result.includes("$5,727.91"), false);
+      assert.equal(result.includes("4412"), false);
+      assert.match(result, /REDACTED_MEMBER_ID/);
+      assert.match(result, /REDACTED_NAME/);
       assert.match(run.logPath, /discovery\/test-run\/run\.jsonl$/);
     } finally {
       await rm(root, { recursive: true, force: true });
