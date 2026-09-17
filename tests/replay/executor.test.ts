@@ -123,6 +123,10 @@ class FakeReplaySurface implements ComputerSurface {
     return "$8,102.30";
   }
 
+  async extractLabeledValue(): Promise<string> {
+    return "Alex Morgan";
+  }
+
   async beginHumanControl(): Promise<void> {}
 
   async endHumanControl(): Promise<[]> {

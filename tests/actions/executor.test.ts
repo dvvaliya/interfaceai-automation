@@ -36,6 +36,10 @@ class FakeSurface implements ComputerSurface {
     throw new Error("extractTableCell is not used by action executor tests");
   }
 
+  async extractLabeledValue(): Promise<string> {
+    throw new Error("extractLabeledValue is not used by action executor tests");
+  }
+
   async beginHumanControl(): Promise<void> {}
 
   async endHumanControl(): Promise<[]> {

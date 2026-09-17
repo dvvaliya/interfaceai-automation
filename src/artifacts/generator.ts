@@ -1,13 +1,15 @@
 import type { AgentLoopResult } from "../discovery/agent-loop.js";
 import type { DiscoveryRequest } from "../discovery/request.js";
+import type { MemberOutputSpec } from "../targets/bank-demo/member-output-specs.js";
 import {
   parseCapabilityArtifact,
   type CapabilityArtifact,
 } from "./schema.js";
 
-export function generateMemberBalanceArtifact(
+export function generateMemberLookupArtifact(
   request: DiscoveryRequest,
   result: AgentLoopResult,
+  outputSpecs: readonly MemberOutputSpec[],
 ): CapabilityArtifact {
   if (result.status !== "completed") {
     throw new Error("A capability artifact can only be generated from a completed discovery run.");
@@ -27,9 +29,8 @@ export function generateMemberBalanceArtifact(
 
   const discoveredMemberId = memberId.value;
 
-  const savingsBalance = result.outputs.savingsBalance;
-  if (!savingsBalance) {
-    throw new Error("The completed discovery run did not return 'savingsBalance'.");
+  if (outputSpecs.length === 0) {
+    throw new Error("At least one validated output is required to generate an artifact.");
   }
 
   const steps: CapabilityArtifact["steps"] = [];
@@ -64,12 +65,15 @@ export function generateMemberBalanceArtifact(
     }
   }
 
+  const outputId = outputSpecs.map((spec) => spec.idSegment).join("_and_");
+  const outputDescription = outputSpecs.map((spec) => spec.displayName).join(" and ");
+
   return parseCapabilityArtifact({
     schemaVersion: "1.0",
     capabilityVersion: "1.0.0",
-    id: "get_member_savings_balance",
-    name: "Get member savings balance",
-    description: "Find a member and return the available Regular Savings balance.",
+    id: `get_member_${outputId}`,
+    name: `Get member ${outputDescription}`,
+    description: `Find a member and return the ${outputDescription}.`,
     status: "draft",
     surface: {
       type: "web",
@@ -87,23 +91,9 @@ export function generateMemberBalanceArtifact(
       },
     },
     steps,
-    outputs: {
-      savingsBalance: {
-        type: "string",
-        description: "Available balance of the Regular Savings account.",
-        required: true,
-        source: {
-          kind: "table_cell",
-          table: {
-            primary: { strategy: "role", role: "region", name: "Deposit Accounts" },
-            fallbacks: [],
-            rationale: "The named account region is stable and independent of member data.",
-          },
-          rowMatch: { column: "Type", value: "Regular Savings" },
-          column: "Available Balance",
-        },
-      },
-    },
+    outputs: Object.fromEntries(
+      outputSpecs.map((spec) => [spec.outputName, spec.definition]),
+    ),
     checkpoint: {
       kind: "visible",
       target: {

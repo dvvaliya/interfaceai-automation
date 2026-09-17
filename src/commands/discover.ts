@@ -1,6 +1,6 @@
 import path from "node:path";
 import { chromium } from "playwright";
-import { generateMemberBalanceArtifact } from "../artifacts/generator.js";
+import { generateMemberLookupArtifact } from "../artifacts/generator.js";
 import { saveCapabilityArtifact, saveExampleArtifact } from "../artifacts/store.js";
 import type { AppConfig } from "../config/env.js";
 import { HandoffController } from "../handoff/controller.js";
@@ -19,7 +19,11 @@ import {
 } from "../policy/action-policy.js";
 import { PlaywrightSurface } from "../surface/playwright-surface.js";
 import { authenticateBankDemo } from "../targets/bank-demo/authenticate.js";
-import { validateMemberBalanceCompletion } from "../targets/bank-demo/validate-member-balance.js";
+import {
+  extractMemberOutputs,
+  resolveMemberOutputSpecs,
+  type MemberOutputSpec,
+} from "../targets/bank-demo/member-output-specs.js";
 
 export async function runDiscover(
   config: AppConfig,
@@ -209,15 +213,17 @@ export async function runDiscover(
       activeController = undefined;
     }
 
+    let outputSpecs: MemberOutputSpec[] = [];
     if (result.status === "completed") {
-      const savingsBalance = await validateMemberBalanceCompletion(surface);
+      outputSpecs = resolveMemberOutputSpecs(request.goal, result.outputs);
+      const trustedOutputs = await extractMemberOutputs(surface, outputSpecs);
       result = {
         ...result,
-        outputs: { ...result.outputs, savingsBalance },
+        outputs: trustedOutputs,
       };
       runEvidence.record("discovery_completion_validated", {
         checkpoint: "Member Profile",
-        outputNames: ["savingsBalance"],
+        outputNames: Object.keys(trustedOutputs),
       });
     }
 
@@ -226,7 +232,7 @@ export async function runDiscover(
       runEvidence.addRedactionValues(Object.values(result.outputs));
     }
     if (result.status === "completed" && !usedHandoff) {
-      const artifact = generateMemberBalanceArtifact(request, result);
+      const artifact = generateMemberLookupArtifact(request, result, outputSpecs);
       artifactPath = await saveCapabilityArtifact(artifact);
       await saveExampleArtifact(artifact);
     }

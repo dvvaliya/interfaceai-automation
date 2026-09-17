@@ -100,6 +100,22 @@ export class PlaywrightSurface implements ComputerSurface {
     throw new Error(`Could not find a table row where '${rowMatch.column}' is '${rowMatch.value}'.`);
   }
 
+  async extractLabeledValue(containerTarget: SurfaceTarget, label: string): Promise<string> {
+    const rows = this.resolveTarget(containerTarget).getByRole("row");
+    for (let index = 0; index < (await rows.count()); index += 1) {
+      const row = rows.nth(index);
+      const headers = (await row.getByRole("rowheader").allInnerTexts()).map((value) =>
+        value.trim(),
+      );
+      if (!headers.includes(label)) continue;
+
+      const value = (await row.getByRole("cell").first().innerText()).trim();
+      if (value) return value;
+    }
+
+    throw new Error(`Could not find a labeled value for '${label}'.`);
+  }
+
   async beginHumanControl(): Promise<void> {
     await this.page.evaluate(humanActionBufferScript);
     await this.page.evaluate(() => {

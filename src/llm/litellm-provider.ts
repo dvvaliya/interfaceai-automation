@@ -38,7 +38,8 @@ Allowed actions:
 {"type":"fail","category":"recoverable|hard","code":"UPPER_SNAKE_CASE_CODE","message":"debuggable failure","reason":"why execution cannot continue"}
 
 Choose only a control present in the accessibility snapshot. Never request or enter credentials.
-Never alter, pad, correct, or guess identifiers from the goal. If an identifier violates visible validation rules, return business_outcome with code INVALID_INPUT. Use business_outcome for record-not-found and other legitimate negative answers. Use fail for application errors, permission denials, session expiry, and technical problems. Use escalate only when a human judgment or approval can resolve the current state.`;
+Never alter, pad, correct, or guess identifiers from the goal. If an identifier violates visible validation rules, return business_outcome with code INVALID_INPUT. Use business_outcome for record-not-found and other legitimate negative answers. Use fail for application errors, permission denials, session expiry, and technical problems. Use escalate only when a human judgment or approval can resolve the current state.
+When completing a member lookup, return only outputs requested by the goal. Prefer these canonical keys when applicable: memberName, memberStatus, homeBranch, email, telephone, savingsBalance, checkingBalance, savingsAccount, checkingAccount.`;
 
 export class LiteLlmProvider implements LlmProvider {
   readonly name: string;

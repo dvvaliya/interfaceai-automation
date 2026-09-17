@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { generateMemberBalanceArtifact } from "../../src/artifacts/generator.js";
+import { generateMemberLookupArtifact } from "../../src/artifacts/generator.js";
 import type { AgentLoopResult } from "../../src/discovery/agent-loop.js";
 import type { DiscoveryRequest } from "../../src/discovery/request.js";
 import type { SurfaceObservation } from "../../src/surface/types.js";
+import { resolveMemberOutputSpecs } from "../../src/targets/bank-demo/member-output-specs.js";
 
 const observation: SurfaceObservation = {
   url: "https://interfaceai-bank-demo.vercel.app/members",
@@ -69,9 +70,14 @@ function completedResult(): AgentLoopResult {
   };
 }
 
-describe("member balance artifact generator", () => {
+describe("member lookup artifact generator", () => {
   it("turns the discovered member value into an input reference", () => {
-    const artifact = generateMemberBalanceArtifact(request, completedResult());
+    const result = completedResult();
+    const artifact = generateMemberLookupArtifact(
+      request,
+      result,
+      resolveMemberOutputSpecs(request.goal, result.status === "completed" ? result.outputs : {}),
+    );
     const firstStep = artifact.steps[0];
 
     assert.equal(artifact.id, "get_member_savings_balance");
@@ -96,7 +102,15 @@ describe("member balance artifact generator", () => {
       firstStep.action.value = "not-a-member-id";
     }
 
-    assert.throws(() => generateMemberBalanceArtifact(request, result), /infer.*memberId/);
+    assert.throws(
+      () =>
+        generateMemberLookupArtifact(
+          request,
+          result,
+          resolveMemberOutputSpecs(request.goal, {}),
+        ),
+      /infer.*memberId/,
+    );
   });
 
   it("rejects unrelated literal fill values", () => {
@@ -112,6 +126,33 @@ describe("member balance artifact generator", () => {
       },
     });
 
-    assert.throws(() => generateMemberBalanceArtifact(request, result), /non-parameterized/);
+    assert.throws(
+      () =>
+        generateMemberLookupArtifact(
+          request,
+          result,
+          resolveMemberOutputSpecs(request.goal, { savingsBalance: "$2,450.75" }),
+        ),
+      /non-parameterized/,
+    );
+  });
+
+  it("creates a member-name capability when the LLM selects memberName", () => {
+    const nameRequest = {
+      ...request,
+      goal: "Find member 12345 and return the account holder name.",
+    };
+    const result = completedResult();
+    if (result.status !== "completed") throw new Error("Expected completed fixture");
+    result.outputs = { memberNumber: "12345", memberName: "Alex Morgan" };
+    const artifact = generateMemberLookupArtifact(
+      nameRequest,
+      result,
+      resolveMemberOutputSpecs(nameRequest.goal, result.outputs),
+    );
+
+    assert.equal(artifact.id, "get_member_name");
+    assert.equal(artifact.outputs.memberName?.source.kind, "labeled_value");
+    assert.equal(artifact.outputs.savingsBalance, undefined);
   });
 });

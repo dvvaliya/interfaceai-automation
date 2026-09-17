@@ -60,6 +60,7 @@ export interface ComputerSurface {
     rowMatch: { column: string; value: string },
     outputColumn: string,
   ): Promise<string>;
+  extractLabeledValue(containerTarget: SurfaceTarget, label: string): Promise<string>;
   beginHumanControl(): Promise<void>;
   endHumanControl(): Promise<CapturedHumanAction[]>;
 }

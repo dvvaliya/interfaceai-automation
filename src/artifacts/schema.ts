@@ -147,12 +147,24 @@ const tableCellOutputSourceSchema = z
   })
   .strict();
 
+const labeledValueOutputSourceSchema = z
+  .object({
+    kind: z.literal("labeled_value"),
+    container: locatorPlanSchema,
+    label: nonEmptyTextSchema.max(200),
+  })
+  .strict();
+
 export const outputDefinitionSchema = z
   .object({
     type: z.enum(["string", "number", "boolean"]),
     description: nonEmptyTextSchema.max(500),
     required: z.boolean().default(true),
-    source: z.discriminatedUnion("kind", [textOutputSourceSchema, tableCellOutputSourceSchema]),
+    source: z.discriminatedUnion("kind", [
+      textOutputSourceSchema,
+      tableCellOutputSourceSchema,
+      labeledValueOutputSourceSchema,
+    ]),
   })
   .strict();
 

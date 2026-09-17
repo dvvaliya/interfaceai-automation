@@ -50,4 +50,4 @@ npm run typecheck
 npm run build
 ```
 
-Runtime artifacts and evidence are written to the sibling directories `../artifacts` and `../evidence`.
+Runtime artifacts and evidence are written to the sibling directories `../artifacts` and `../evidence`. The generated artifact ID follows the requested member output, for example `get_member_name` or `get_member_savings_balance`.

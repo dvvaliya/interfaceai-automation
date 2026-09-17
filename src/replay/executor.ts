@@ -414,9 +414,13 @@ async function extractOutputs(
       rawValue = await withLocatorFallback(source.target, (target) =>
         surface.extractText(target),
       );
-    } else {
+    } else if (source.kind === "table_cell") {
       rawValue = await withLocatorFallback(source.table, (target) =>
         surface.extractTableCell(target, source.rowMatch, source.column),
+      );
+    } else {
+      rawValue = await withLocatorFallback(source.container, (target) =>
+        surface.extractLabeledValue(target, source.label),
       );
     }
 
